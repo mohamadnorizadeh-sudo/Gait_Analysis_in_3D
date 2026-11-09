@@ -27,7 +27,7 @@ import cv2
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from gait3d.camera import StereoCamera  # noqa: E402
+from gait3d.camera import open_source  # noqa: E402
 from gait3d.pose import PoseEstimator  # noqa: E402
 from gait3d.profile import SubjectProfile, load_or_none  # noqa: E402
 from gait3d.stereo_geometry import StereoGeometry, make_sgbm  # noqa: E402
@@ -49,6 +49,9 @@ ap.add_argument("--csv", default=time.strftime("gait_%Y%m%d_%H%M%S.csv"))
 ap.add_argument("--headless", action="store_true")
 ap.add_argument("--seconds", type=float, default=0.0, help="stop after N seconds (0 = until q)")
 ap.add_argument("--save-video", default="")
+ap.add_argument("--source", choices=["picamera", "shm"], default="picamera",
+                help="shm = read frames from the running camera_shm_writer.py (cameras stay with it)")
+ap.add_argument("--swap", action="store_true", help="shm source: use cam1 as the LEFT camera")
 args = ap.parse_args()
 
 geo = StereoGeometry.load(args.calib)
@@ -76,7 +79,7 @@ writer = None
 fps, t_prev, t0 = 0.0, None, time.monotonic()
 saved_profile = profile
 try:
-    with StereoCamera(lens_position=args.lens) as cam:
+    with open_source(args.source, lens_position=args.lens, swap=args.swap) as cam:
         while True:
             t, L, R, skew = cam.read()
             rl = cv2.remap(L, *ml, cv2.INTER_LINEAR)

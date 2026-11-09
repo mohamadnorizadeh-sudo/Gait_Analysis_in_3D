@@ -27,7 +27,7 @@ import cv2
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from gait3d.camera import StereoCamera  # noqa: E402
+from gait3d.camera import open_source  # noqa: E402
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--lens", type=float, default=3.0, help="LensPosition in dioptres (3.0 = ~33 cm)")
@@ -37,6 +37,9 @@ ap.add_argument("--rows", type=int, default=6, help="inner corners per column")
 ap.add_argument("--out", default="calib_data")
 ap.add_argument("--min-move-px", type=float, default=25.0)
 ap.add_argument("--min-sharpness", type=float, default=60.0)
+ap.add_argument("--source", choices=["picamera", "shm"], default="picamera")
+ap.add_argument("--swap", action="store_true", help="shm source: use cam1 as the LEFT camera")
+ap.add_argument("--headless", action="store_true", help="no preview window (e.g. over a remote shell)")
 args = ap.parse_args()
 
 CB = (args.cols, args.rows)
@@ -58,11 +61,13 @@ def sharpness(gray, corners):
 
 count = len(os.listdir(f"{args.out}/left"))
 last = None
-coverage = np.zeros((480, 640), np.uint8)
+coverage = None
 print(f"Starting at pair {count}. Press q to quit.")
-with StereoCamera(lens_position=args.lens) as cam:
+with open_source(args.source, lens_position=args.lens, swap=args.swap) as cam:
     while count < args.count:
         t, L, R, skew = cam.read()
+        if coverage is None:
+            coverage = np.zeros(L.shape[:2], np.uint8)
         gl, gr = cv2.cvtColor(L, cv2.COLOR_BGR2GRAY), cv2.cvtColor(R, cv2.COLOR_BGR2GRAY)
         cl, cr = find(gl), find(gr)
         vis_l, vis_r = L.copy(), R.copy()
@@ -86,6 +91,9 @@ with StereoCamera(lens_position=args.lens) as cam:
                 msg = f"SAVED {count}/{args.count}"
                 print(msg)
                 vis_l[:] = 255 - vis_l
+        if args.headless:
+            print(f"{count}/{args.count} {msg} | coverage {100 * coverage.mean() / 255:.0f}%   ", end="\r")
+            continue
         cov = cv2.cvtColor(coverage, cv2.COLOR_GRAY2BGR)
         vis_l = cv2.addWeighted(vis_l, 0.85, cov, 0.15, 0)
         prev = np.hstack([vis_l, vis_r])
@@ -95,5 +103,6 @@ with StereoCamera(lens_position=args.lens) as cam:
         cv2.imshow("stereo calibration capture (v2)", prev)
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
-cv2.destroyAllWindows()
-print(f"Done: {count} pairs in {args.out}/  -> next: python3 scripts/02_calibrate.py")
+if not args.headless:
+    cv2.destroyAllWindows()
+print(f"\nDone: {count} pairs in {args.out}/  -> next: python3 scripts/02_calibrate.py")

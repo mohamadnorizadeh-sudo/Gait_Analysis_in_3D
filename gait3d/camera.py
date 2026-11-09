@@ -173,6 +173,9 @@ class StereoCamera:
         raise TimeoutError("no stereo pair received (check both cameras are connected)")
 
     def stop(self):
+        self._stop_threads()
+
+    def _stop_threads(self):
         for t in self.threads:
             t.running = False
         for t in self.threads:
@@ -184,3 +187,75 @@ class StereoCamera:
             except Exception:
                 pass
         self.cams, self.threads = [], []
+
+
+class ShmStereoSource:
+    """Read synchronised stereo frames from the Gait-Pose-Estimation shared memory
+    (rpi_src/camera_shm_writer.py) instead of opening the cameras.
+
+    Why (v2.1): on the walker Pi that writer runs at boot and owns both cameras,
+    so Picamera2 cannot open them a second time.  This source is strictly
+    read-only (SeqLock read, ``track=False`` so Python never unlinks the
+    segment) and lets v2 run side-by-side with the existing pipeline.
+
+    Frame format of that writer: msgpack {"cam0","cam1": JPEG, "ts0","ts1": ns,
+    "dt_ms"}, 640x360 from the 2304x1296 sensor mode, cam0 rotated right and
+    cam1 rotated left (portrait 360x640).  A calibration must be captured from
+    THIS source to be valid for it (scripts/01_capture_calibration.py --shm).
+    """
+
+    def __init__(self, name="cam_frame_shm", left="cam0", swap=False, poll_s=0.002):
+        self.name, self.poll_s = name, poll_s
+        self.keys = ("cam1", "cam0") if swap else (left, "cam1" if left == "cam0" else "cam0")
+        self.shm = None
+        self._last_seq = None
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, *exc):
+        self.stop()
+
+    def start(self):
+        from multiprocessing import shared_memory
+        try:
+            self.shm = shared_memory.SharedMemory(name=self.name, create=False, track=False)
+        except TypeError:                       # Python < 3.13 has no track=
+            from multiprocessing import resource_tracker
+            self.shm = shared_memory.SharedMemory(name=self.name, create=False)
+            resource_tracker.unregister(self.shm._name, "shared_memory")
+
+    def _snapshot(self):
+        import struct
+        buf = self.shm.buf
+        for _ in range(1000):
+            s1 = struct.unpack("<I", bytes(buf[0:4]))[0]
+            if s1 % 2 == 0 and s1 != self._last_seq:
+                n = struct.unpack("<I", bytes(buf[4:8]))[0]
+                data = bytes(buf[8:8 + n])
+                if struct.unpack("<I", bytes(buf[0:4]))[0] == s1:
+                    self._last_seq = s1
+                    return data
+            time.sleep(self.poll_s)
+        raise TimeoutError("no new frame in shared memory (is camera_shm_writer.py running?)")
+
+    def read(self, timeout=1.0):
+        import cv2
+        import msgpack
+        p = msgpack.unpackb(self._snapshot())
+        imgs = [cv2.imdecode(np.frombuffer(p[k], np.uint8), cv2.IMREAD_COLOR) for k in self.keys]
+        ts = int(p.get("ts0", time.monotonic_ns()))
+        return ts * 1e-9, imgs[0], imgs[1], float(p.get("dt_ms", 0.0))
+
+    def stop(self):
+        if self.shm is not None:
+            self.shm.close()            # never unlink: the writer owns the segment
+            self.shm = None
+
+
+def open_source(kind="picamera", **kw):
+    """'picamera' -> StereoCamera (needs free cameras), 'shm' -> ShmStereoSource."""
+    if kind == "shm":
+        return ShmStereoSource(**{k: v for k, v in kw.items() if k in ("name", "left", "swap")})
+    return StereoCamera(**{k: v for k, v in kw.items() if k not in ("name", "left", "swap")})

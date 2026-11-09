@@ -38,3 +38,19 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 * Re-run calibration at `--lens 3.0` and check the reported baseline against a ruler.
 * FPS with `yolov8n-pose_ncnn_model` at `--imgsz 416`.
 * YOLOv8 (trained on full-body COCO) may still be weak on close-up legs. If hip confidence rarely passes 0.50, the next step is fine-tuning on a few hundred walker frames.
+
+---
+
+## v2.1.0 — runs side-by-side with the existing camera pipeline (2026-11-09, tested on the Pi)
+
+### Found on the real Pi 5 (Walker_CAM, Debian 13, Python 3.13, OpenCV 5.0, Ultralytics 8.4)
+
+| # | Finding | Consequence | Change |
+|---|---|---|---|
+| 13 | `Gait-Pose-Estimation/rpi_src/camera_shm_writer.py` runs from boot and **owns both cameras** (56 fps, 640×360, portrait-rotated, JPEG in shared memory `cam_frame_shm`) | v2 could not open the cameras with Picamera2 | New read-only `ShmStereoSource` (`--source shm` in scripts 01/03/04). SeqLock read, `track=False` so the segment is never unlinked. Tested live: **55.6 fps, L/R sync 0.73 ms**, writer untouched |
+| 14 | Old `stereo_calibration.npz`: left distortion `[0.20, 2.15, −17.9, 48.7]`, rectified principal points at x = 778 and −118 in a 640-px image | Rectification was invalid → every depth wrong | Re-running v2's calibration on the **same** 20 old photos: 19/20 used, RMS 0.22/0.25 px, normal distortion, epipolar 0.48 px |
+| 15 | Both old and new calibrations give a **baseline ≈ 0.77 m** | With legs at 0.3–0.6 m the disparity is hundreds of pixels; v1's SGBM (`numDisparities=64`) could only see objects **> 3.3 m** away | v2 triangulates keypoints directly (no disparity search limit). **To confirm with a ruler** |
+| 16 | YOLOv8n-pose on the Pi CPU, L+R pair: 606 ms @640, 344 ms @480, 268 ms @416, 168 ms @320 | 1.7–6 stereo fps with PyTorch | NCNN export in progress; Hailo accelerator (`hailo1x_pci`) is present for a later version |
+| 17 | `calib_data` photos are 640×480 unrotated, but the running writer delivers 640×360 portrait frames from a different sensor mode | A calibration is only valid for the exact capture format | Recalibrate from the source you will track with (`01_capture_calibration.py --source shm --headless`) |
+
+All 19 tests pass on the Pi (7.2 s).

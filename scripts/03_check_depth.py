@@ -19,7 +19,7 @@ import cv2
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from gait3d.camera import StereoCamera  # noqa: E402
+from gait3d.camera import open_source  # noqa: E402
 from gait3d.stereo_geometry import StereoGeometry, make_sgbm  # noqa: E402
 
 ap = argparse.ArgumentParser()
@@ -28,6 +28,8 @@ ap.add_argument("--lens", type=float, default=3.0)
 ap.add_argument("--z-min-mm", type=float, default=150.0)
 ap.add_argument("--frames", type=int, default=0, help="stop after N frames (0 = until q)")
 ap.add_argument("--headless", action="store_true")
+ap.add_argument("--source", choices=["picamera", "shm"], default="picamera")
+ap.add_argument("--swap", action="store_true")
 args = ap.parse_args()
 
 geo = StereoGeometry.load(args.calib)
@@ -40,7 +42,7 @@ print(f"-> for Z_min = {args.z_min_mm / 10:.0f} cm use numDisparities = {nd}")
 (ml, mr) = geo.rectify_maps()
 sgbm = make_sgbm(nd)
 n = 0
-with StereoCamera(lens_position=args.lens) as cam:
+with open_source(args.source, lens_position=args.lens, swap=args.swap) as cam:
     while True:
         t, L, R, skew = cam.read()
         rl = cv2.remap(L, *ml, cv2.INTER_LINEAR)
