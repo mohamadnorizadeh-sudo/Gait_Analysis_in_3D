@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+calib_data/
+*.ply
+gait_*.csv
+walk_*.csv
+*_ncnn_model/
+yolov8n-pose.pt

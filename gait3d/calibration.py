@@ -1,0 +1,99 @@
+"""Fisheye stereo calibration (v2).
+
+Issues fixed versus notebook cell 4 (v1)
+----------------------------------------
+* v1 ran ``cv2.fisheye.stereoCalibrate`` directly with zero-initialised
+  intrinsics.  v2 first calibrates each camera on its OWN detections
+  (more views per camera, better K/D), automatically removes views that make
+  CALIB_CHECK_COND fail, then runs the stereo solve with CALIB_FIX_INTRINSIC
+  so only R/T are estimated.
+* A low RMS on few views is not proof of accuracy.  v2 reports
+  - per-camera RMS, stereo RMS, number of views used
+  - baseline |T| in mm  -> compare with a ruler measurement of the rig!
+  - rectified epipolar error (mean |y_left - y_right| of matched corners);
+    should be < 0.5 px.  This is what actually matters for depth.
+  - the closest depth the chosen SGBM disparity range can measure.
+* ``stereoRectify`` uses CALIB_ZERO_DISPARITY so both rectified principal
+  points coincide (v1 passed flags=0).  ``balance`` / ``fov_scale`` are
+  exposed: balance=0 crops to valid pixels, 1 keeps the full 120 deg FOV.
+"""
+
+from __future__ import annotations
+
+import re
+
+import cv2
+import numpy as np
+
+SUBPIX = (cv2.TERM_CRITERIA_MAX_ITER + cv2.TERM_CRITERIA_EPS, 100, 1e-6)
+
+
+def _flag(name):
+    """OpenCV 4.x keeps fisheye flags in cv2.fisheye (Pi OS); OpenCV 5 moved them to cv2."""
+    return getattr(cv2.fisheye, name, None) if hasattr(cv2.fisheye, name) else getattr(cv2, name)
+
+
+MONO_FLAGS = _flag("CALIB_RECOMPUTE_EXTRINSIC") | _flag("CALIB_CHECK_COND") | _flag("CALIB_FIX_SKEW")
+FIX_INTRINSIC = _flag("CALIB_FIX_INTRINSIC")
+
+
+def object_points(cols, rows, square_mm):
+    objp = np.zeros((1, cols * rows, 3), np.float64)
+    objp[0, :, :2] = np.mgrid[0:cols, 0:rows].T.reshape(-1, 2) * square_mm
+    return objp
+
+
+def _mono(obj, img, size, label):
+    """fisheye.calibrate with automatic removal of ill-conditioned views."""
+    keep = list(range(len(obj)))
+    while len(keep) >= 6:
+        K, D = np.zeros((3, 3)), np.zeros((4, 1))
+        try:
+            rms, K, D, _, _ = cv2.fisheye.calibrate(
+                [obj[i] for i in keep], [img[i] for i in keep], size, K, D,
+                flags=MONO_FLAGS, criteria=SUBPIX)
+            return rms, K, D, keep
+        except cv2.error as e:
+            m = re.search(r"input array (\d+)", str(e))
+            if not m:
+                raise
+            bad = keep[int(m.group(1))]
+            print(f"[{label}] dropping ill-conditioned view {bad}")
+            keep.remove(bad)
+    raise RuntimeError(f"[{label}] fewer than 6 usable views - capture more calibration pairs")
+
+
+def stereo_calibrate(obj, img_l, img_r, size, balance=0.0, fov_scale=1.0):
+    """obj/img_*: lists of (1,N,3)/(1,N,2) float64 arrays. size=(w,h)."""
+    rms_l, K_l, D_l, keep_l = _mono(obj, img_l, size, "left")
+    rms_r, K_r, D_r, keep_r = _mono(obj, img_r, size, "right")
+    keep = sorted(set(keep_l) & set(keep_r))
+    o = [obj[i] for i in keep]
+    il = [img_l[i] for i in keep]
+    ir = [img_r[i] for i in keep]
+    res = cv2.fisheye.stereoCalibrate(
+        o, il, ir, K_l, D_l, K_r, D_r, size,
+        flags=FIX_INTRINSIC, criteria=SUBPIX)
+    rms, R, T = res[0], res[5], res[6]          # works for OpenCV 4.x signatures
+    R1, R2, P1, P2, Q = cv2.fisheye.stereoRectify(
+        K_l, D_l, K_r, D_r, size, R, T, cv2.CALIB_ZERO_DISPARITY,
+        newImageSize=size, balance=balance, fov_scale=fov_scale)
+
+    # rectified epipolar error
+    dy = []
+    for a, b in zip(il, ir):
+        ul = cv2.fisheye.undistortPoints(a.reshape(-1, 1, 2), K_l, D_l, R=R1, P=P1)
+        ur = cv2.fisheye.undistortPoints(b.reshape(-1, 1, 2), K_r, D_r, R=R2, P=P2)
+        dy.append(np.abs(ul[:, 0, 1] - ur[:, 0, 1]))
+    dy = np.concatenate(dy)
+
+    report = {
+        "views_total": len(obj), "views_used": len(keep),
+        "rms_left": float(rms_l), "rms_right": float(rms_r), "rms_stereo": float(rms),
+        "baseline_mm": float(np.linalg.norm(T)),
+        "epipolar_mean_px": float(dy.mean()), "epipolar_p95_px": float(np.percentile(dy, 95)),
+        "rectified_f_px": float(P1[0, 0]),
+    }
+    data = dict(K_l=K_l, D_l=D_l, R1=R1, P1=P1, K_r=K_r, D_r=D_r, R2=R2, P2=P2, Q=Q,
+                R=R, T=T, image_size=np.array(size))
+    return data, report
