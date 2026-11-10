@@ -39,6 +39,8 @@ class LegObs:
     conf: np.ndarray               # (3,)
     xr: np.ndarray                 # (3,) right-image x (nan if not matched)
     yr: np.ndarray = None          # (3,) right-image y (needed for non-rectified rigs)
+    conf_r: np.ndarray = None      # (3,) right-image confidences (v2.3)
+    xy_r: np.ndarray = None        # (3, 2) right-image pixels (v2.3)
 
     @property
     def mean_conf(self) -> float:
@@ -95,12 +97,19 @@ def legs_from_people(left: Person, right: Optional[Person], thr: float = 0.5,
     for side, idx in LEG_IDX.items():
         idx = list(idx)
         c = left.conf[idx]
-        if np.any(c < thr):
-            continue                       # occluded -> leg disappears entirely
+        cr = right.conf[idx] if right is not None else np.zeros(3)
+        if match_error is None:
+            if np.any(c < thr):
+                continue                   # occluded -> leg disappears entirely
+        else:
+            # v2.3 converging rig: each joint must be confidently seen by AT LEAST
+            # one camera (on the walker cam0 barely sees the hips: conf 0.24-0.32).
+            if np.any(np.maximum(c, cr) < thr):
+                continue
         xr, yr = np.full(3, np.nan), np.full(3, np.nan)
         if right is not None:
             for j, k in enumerate(idx):
-                if right.conf[k] < thr:
+                if right.conf[k] < thr or left.conf[k] < thr:
                     continue
                 if match_error is None:          # rectified rig: same row + disparity range
                     dy = abs(left.xy[k, 1] - right.xy[k, 1])
@@ -110,7 +119,8 @@ def legs_from_people(left: Person, right: Optional[Person], thr: float = 0.5,
                     good = match_error(*left.xy[k], *right.xy[k]) <= epi_tol_px
                 if good:
                     xr[j], yr[j] = right.xy[k]
-        legs[side] = LegObs(side, left.xy[idx].astype(float), c.astype(float), xr, yr)
+        legs[side] = LegObs(side, left.xy[idx].astype(float), c.astype(float), xr, yr,
+                            cr.astype(float), right.xy[idx].astype(float) if right is not None else None)
     return legs
 
 

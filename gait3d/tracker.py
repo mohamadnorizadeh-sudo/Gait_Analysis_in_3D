@@ -30,7 +30,8 @@ SRC_COLORS = {"measured": (0, 220, 0), "constrained": (0, 165, 255), "prior": (0
 class TrackerConfig:
     kp_conf: float = 0.50             # per-joint confidence gate (requirement 4)
     epi_tol_px: float = 4.0           # rectified rig: max |y_left - y_right| (px)
-    ray_gap_mm: float = 40.0          # converging rig (v2.2): max distance between viewing rays
+    ray_gap_mm: float = 80.0          # converging rig: max distance between viewing rays
+                                      # (v2.3: 40 -> 80 mm; live gaps were 4-68 mm at 97 deg convergence)
     z_range_mm: tuple = (120.0, 2000.0)
     ghost_ratio: float = 0.35
     ghost_3d_mm: float = 60.0
@@ -41,6 +42,8 @@ class TrackerConfig:
 @dataclass
 class FrameOutput:
     legs: Dict[str, LegResult] = field(default_factory=dict)
+    proj: Dict[str, np.ndarray] = field(default_factory=dict)   # solved joints projected into the left image
+    shin_measured: Dict[str, float] = field(default_factory=dict)  # raw stereo knee-ankle distance (validation)
     obs: Dict[str, LegObs] = field(default_factory=dict)
     angle_filtered: Dict[str, float] = field(default_factory=dict)
     status: str = ""
@@ -74,6 +77,9 @@ class GaitTracker:
         for j, name in enumerate(JOINTS):
             x, y = obs.xy[j]
             P = None
+            if obs.conf[j] < self.cfg.kp_conf:
+                zs[name] = None             # left keypoint is a guess: never triangulate it
+                continue
             if np.isfinite(obs.xr[j]):
                 yr = obs.yr[j] if obs.yr is not None else None
                 P = self.geo.triangulate(x, y, obs.xr[j], yr)
@@ -126,11 +132,23 @@ class GaitTracker:
 
         # ---------------- tracking ----------------
         for side, obs in legs.items():
-            zs, _ = self._measure(obs, sgbm)
-            rays = {n: self.geo.ray(*obs.xy[j]) for j, n in enumerate(JOINTS)}
-            res = self.solvers[side].solve(rays, zs)
+            zs, mp = self._measure(obs, sgbm)
+            if "knee" in mp and "ankle" in mp:
+                out.shin_measured[side] = float(np.linalg.norm(mp["knee"] - mp["ankle"]))
+            rays, hints = {}, {}
+            for j, n in enumerate(JOINTS):
+                if obs.conf[j] >= self.cfg.kp_conf or obs.conf_r is None or not hasattr(self.geo, "C_r"):
+                    rays[n] = self.geo.ray(*obs.xy[j])
+                else:
+                    # v2.3: joint only seen by the right camera -> its ray, depth from bone length
+                    rays[n] = (self.geo.C_r, self.geo.ray_right_in_left(*obs.xy_r[j]))
+                    hints[n] = self.geo.ray(*obs.xy[j])     # cam0's low-confidence guess
+                    zs[n] = None
+            res = self.solvers[side].solve(rays, zs, hints)
             if res is not None:
                 out.legs[side] = res
+                if hasattr(self.geo, "project_left"):
+                    out.proj[side] = np.array([self.geo.project_left(P) for P in (res.hip, res.knee, res.ankle)])
 
         # 3D ghost check: two "legs" whose knees coincide in space are one limb
         if "L" in out.legs and "R" in out.legs:
@@ -155,7 +173,8 @@ def draw(frame, out: FrameOutput, fps=0.0, skew_ms=0.0):
     img = frame.copy()
     for side, obs in out.obs.items():
         res = out.legs.get(side)
-        pts = [tuple(int(v) for v in p) for p in obs.xy]
+        src_xy = out.proj.get(side, obs.xy)          # draw the solved 3D joints where available
+        pts = [tuple(int(v) for v in p) for p in src_xy]
         col = COLORS[side]
         if res is None and out.legs:      # leg passed 2D gate but has no 3D solution: draw thin
             cv2.line(img, pts[0], pts[1], col, 1)
@@ -191,7 +210,7 @@ def draw(frame, out: FrameOutput, fps=0.0, skew_ms=0.0):
 class CsvLogger:
     FIELDS = ["t", "side", "knee_angle_deg", "flexion_deg", "flexion_filtered_deg",
               "hip_x", "hip_y", "hip_z", "knee_x", "knee_y", "knee_z", "ankle_x", "ankle_y", "ankle_z",
-              "src_hip", "src_knee", "src_ankle", "thigh_mm", "shin_mm"]
+              "src_hip", "src_knee", "src_ankle", "thigh_mm", "shin_mm", "shin_stereo_mm"]
 
     def __init__(self, path):
         self.f = open(path, "w", newline="")
@@ -203,7 +222,8 @@ class CsvLogger:
             row = {"t": f"{t:.4f}", "side": side, "knee_angle_deg": f"{r.angle_deg:.2f}",
                    "flexion_deg": f"{r.flexion_deg:.2f}",
                    "flexion_filtered_deg": f"{180 - out.angle_filtered.get(side, r.angle_deg):.2f}",
-                   "thigh_mm": f"{r.thigh_mm:.1f}", "shin_mm": f"{r.shin_mm:.1f}"}
+                   "thigh_mm": f"{r.thigh_mm:.1f}", "shin_mm": f"{r.shin_mm:.1f}",
+                   "shin_stereo_mm": f"{out.shin_measured[side]:.1f}" if side in out.shin_measured else ""}
             for n, P in (("hip", r.hip), ("knee", r.knee), ("ankle", r.ankle)):
                 row[f"{n}_x"], row[f"{n}_y"], row[f"{n}_z"] = (f"{v:.1f}" for v in P)
                 row[f"src_{n}"] = r.source[n]

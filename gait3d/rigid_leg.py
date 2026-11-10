@@ -146,26 +146,58 @@ class RigidLegSolver:
             return max(1.0, float(self.depth_sigma_fn(z)))
         return max(1.0, 0.02 * float(z))
 
-    def solve(self, rays: Dict[str, np.ndarray], meas_z: Dict[str, Optional[float]]) -> Optional[LegResult]:
-        """rays: joint -> pixel ray (r_z = 1).  meas_z: joint -> measured depth or None."""
-        prev = self._prev if (self._prev is not None and self._prev_age <= self.max_prior_age) else None
+    @staticmethod
+    def _split(ray):
+        """A ray is either a left-camera pixel ray r (origin 0, r_z = 1, so the
+        parameter t is the depth Z) or (origin, direction) for a joint that only
+        the OTHER camera sees (v2.3)."""
+        if isinstance(ray, tuple):
+            return np.asarray(ray[0], float), np.asarray(ray[1], float)
+        return np.zeros(3), np.asarray(ray, float)
+
+    def solve(self, rays: Dict[str, object], meas_z: Dict[str, Optional[float]],
+              hints: Optional[Dict[str, np.ndarray]] = None) -> Optional[LegResult]:
+        """rays: joint -> left pixel ray (r_z = 1) or (origin, dir) from the other camera.
+        meas_z: joint -> measured depth (left-camera Z, only for left rays) or None.
+        hints: joint -> LOW-confidence left pixel ray.  Not trusted as a
+        measurement, only used to pick the correct one of the two ray-sphere
+        roots (front/back) for a joint that only the other camera sees."""
+        hints = hints or {}
+        prevP = self._prev if (self._prev is not None and self._prev_age <= self.max_prior_age) else None
         names = JOINTS
-        R = [np.asarray(rays[n], float) for n in names]
-        zm = [meas_z.get(n) for n in names]
+        O, R = zip(*[self._split(rays[n]) for n in names])
+        left_ray = [not isinstance(rays[n], tuple) for n in names]
+        zm = [meas_z.get(n) if left_ray[i] else None for i, n in enumerate(names)]
         zm = [None if (z is None or not np.isfinite(z) or z <= 0) else float(z) for z in zm]
 
+        def t_closest(i, P):
+            d = R[i]
+            return float(d @ (np.asarray(P) - O[i]) / (d @ d))
+
+        prev = None
+        if prevP is not None:
+            prev = [t_closest(i, prevP[n]) for i, n in enumerate(names)]
+
         # ---- initial guess ------------------------------------------------
-        init = []
-        known = [z for z in zm if z is not None]
-        for i, n in enumerate(names):
+        init = [None] * 3
+        for i in range(3):
             if zm[i] is not None:
-                init.append(zm[i])
+                init[i] = zm[i]
             elif prev is not None:
-                init.append(prev[n])
-            elif known:
-                init.append(float(np.median(known)))
-            else:
-                init.append(None)
+                init[i] = prev[i]
+        anchors = [O[i] + init[i] * R[i] for i in range(3) if init[i] is not None]
+        for i, n in enumerate(names):
+            if init[i] is None and n in hints and not left_ray[i]:
+                # weak triangulation: closest approach between this ray and the hint ray
+                d1, d2, w0 = R[i], np.asarray(hints[n], float), O[i]
+                a, b, c = d1 @ d1, d1 @ d2, d2 @ d2
+                den = a * c - b * b
+                if abs(den) > 1e-9:
+                    init[i] = max(10.0, float((b * (d2 @ w0) - c * (d1 @ w0)) / den))
+        for i in range(3):
+            if init[i] is None and anchors:
+                # closest point on this ray to the mean of the known joints
+                init[i] = max(10.0, t_closest(i, np.mean(anchors, axis=0)))
         if any(v is None for v in init):
             # Nothing measured this frame and no recent history: no 3D lock.
             # (We deliberately do NOT fall back to a 2D pixel angle.)
@@ -173,9 +205,9 @@ class RigidLegSolver:
             return None
         z = np.array(init, float)
 
-        # ---- robust Levenberg-Marquardt over the three depths --------------
+        # ---- robust Levenberg-Marquardt over the three ray parameters ------
         def residuals(zv, w_meas):
-            P = [zv[i] * R[i] for i in range(3)]
+            P = [O[i] + zv[i] * R[i] for i in range(3)]
             res = [
                 (np.linalg.norm(P[0] - P[1]) - self.L_thigh) / self.bone_sigma_mm,
                 (np.linalg.norm(P[2] - P[1]) - self.L_shin) / self.bone_sigma_mm,
@@ -184,13 +216,12 @@ class RigidLegSolver:
                 if zm[i] is not None:
                     res.append(np.sqrt(w_meas[i]) * (zv[i] - zm[i]) / self._sigma(zm[i]))
                 if prev is not None:
-                    res.append((zv[i] - prev[names[i]]) / self.prior_sigma_mm)
+                    res.append((zv[i] - prev[i]) / self.prior_sigma_mm)
             return np.array(res)
 
         w = np.ones(3)
         lam = 1e-2
         for _ in range(25):
-            # Huber IRLS weights for measurement terms
             for i in range(3):
                 if zm[i] is not None:
                     e = abs(z[i] - zm[i]) / self._sigma(zm[i])
@@ -213,25 +244,34 @@ class RigidLegSolver:
                 lam *= 10.0
 
         # ---- exact closed-form projection onto the bone spheres -----------
-        K = z[1] * R[1]
-        roots_h, hit_h = ray_sphere_depths(R[0], K, self.L_thigh)
-        roots_a, hit_a = ray_sphere_depths(R[2], K, self.L_shin)
+        def spheres(zk):
+            K = O[1] + zk * R[1]
+            rh, oh = ray_sphere_depths(R[0], K - O[0], self.L_thigh)
+            ra, oa = ray_sphere_depths(R[2], K - O[2], self.L_shin)
+            return K, rh, oh, ra, oa
+
+        K, roots_h, hit_h, roots_a, hit_a = spheres(z[1])
         if not (hit_h and hit_a):
             # Pixel noise put a ray just outside its bone sphere.  Slide the knee
-            # along its own ray to the nearest depth where BOTH spheres are hit,
-            # so the bone lengths stay exact.
-            for dk in np.concatenate([[0.0], np.ravel(np.column_stack([np.arange(1, 81), -np.arange(1, 81)]))]):
-                Kc = (z[1] + dk) * R[1]
-                rh, ok_h = ray_sphere_depths(R[0], Kc, self.L_thigh)
-                ra, ok_a = ray_sphere_depths(R[2], Kc, self.L_shin)
-                if ok_h and ok_a:
+            # along its own ray to the nearest parameter where BOTH spheres are hit.
+            for dk in np.ravel(np.column_stack([np.arange(1, 81), -np.arange(1, 81)])):
+                Kc, rh, oh, ra, oa = spheres(z[1] + dk)
+                if oh and oa:
                     z[1], K, roots_h, roots_a = z[1] + dk, Kc, rh, ra
                     break
-        z_h = closest_root(roots_h, z[0])
-        z_a = closest_root(roots_a, z[2])
-        H, A = z_h * R[0], z_a * R[2]
+        def pick(i, roots, target):
+            n = names[i]
+            if n in hints and not left_ray[i] and len(roots) > 1:
+                h = np.asarray(hints[n], float)
+                h = h / np.linalg.norm(h)
+                dist = [np.linalg.norm(np.cross(O[i] + t * R[i], h)) for t in roots]
+                return float(roots[int(np.argmin(dist))])
+            return closest_root(roots, target)
 
-        # per-joint provenance
+        z_h = pick(0, roots_h, z[0])
+        z_a = pick(2, roots_a, z[2])
+        H, A = O[0] + z_h * R[0], O[2] + z_a * R[2]
+
         src = {}
         for i, n, zf in zip(range(3), names, (z_h, z[1], z_a)):
             if zm[i] is None:
@@ -246,6 +286,6 @@ class RigidLegSolver:
         if ang is None:
             self._prev_age += 1
             return None
-        self._prev = {"hip": z_h, "knee": float(z[1]), "ankle": z_a}
+        self._prev = {"hip": H, "knee": K, "ankle": A}
         self._prev_age = 0
         return LegResult(H, K, A, ang, src, float(resid))

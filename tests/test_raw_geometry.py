@@ -65,3 +65,28 @@ def test_load_geometry_picks_raw(tmp_path):
     np.savez(p, K_l=g.K_l, D_l=g.D_l, K_r=g.K_r, D_r=g.D_r, R=g.R, T=g.T, image_size=np.array([360, 640]),
              R1=np.eye(3), R2=np.eye(3), P1=np.zeros((3, 4)), P2=np.zeros((3, 4)), Q=np.zeros((4, 4)))
     assert isinstance(load_geometry(str(p)), RawStereoGeometry)
+
+
+def test_hip_seen_only_by_right_camera():
+    """v2.3: on the walker cam0 barely sees the hips; the hip ray comes from cam1
+    and its depth from the thigh length -- still a full 3D angle, never 2D."""
+    g, rng = make_raw(), np.random.default_rng(1)
+    errs = []
+    for deg in range(-30, 31, 10):
+        joints = leg(125.0, rot((0, 1, 0), deg))
+        H, K, A = joints
+        rays, zs = {}, {}
+        hr = g.project_right(H) + rng.normal(0, 0.7, 2)
+        rays["hip"] = (g.C_r, g.ray_right_in_left(*hr))
+        zs["hip"] = None
+        hint = {"hip": g.ray(*(g.project_left(H) + rng.normal(0, 15, 2)))}   # cam0's low-confidence guess
+        for n, X in (("knee", K), ("ankle", A)):
+            pl = g.project_left(X) + rng.normal(0, 0.7, 2)
+            pr = g.project_right(X) + rng.normal(0, 0.7, 2)
+            rays[n] = g.ray(*pl)
+            zs[n] = g.triangulate(*pl, *pr)[2]
+        res = RigidLegSolver(L_THIGH, L_SHIN, depth_sigma_fn=g.depth_sigma).solve(rays, zs, hint)
+        assert res is not None and res.source["hip"] == "constrained"
+        assert abs(res.thigh_mm - L_THIGH) < 2 and np.linalg.norm(res.hip - H) < 60
+        errs.append(abs(res.angle_deg - 125.0))
+    assert np.median(errs) < 3.0, errs
