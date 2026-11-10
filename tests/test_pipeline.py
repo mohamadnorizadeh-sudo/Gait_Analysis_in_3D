@@ -117,7 +117,8 @@ def test_end_to_end(tmp_path, monkeypatch):
     prof = tmp_path / "subject.json"
     script = os.path.join(os.path.dirname(__file__), "..", "scripts", "04_run_tracker.py")
     monkeypatch.setattr(sys, "argv", [script, "--calib", str(calib), "--headless", "--seconds", "1e9",
-                                      "--csv", str(out_csv), "--profile-out", str(prof)])
+                                      "--csv", str(out_csv), "--profile-out", str(prof),
+                                      "--web-port", "0", "--record-kp", str(tmp_path / "kp.jsonl")])
     Sim.frame = 0
     # stop after 10 simulated seconds
     orig_read = FakeCam.read
@@ -154,5 +155,13 @@ def test_end_to_end(tmp_path, monkeypatch):
     for r in ghost:
         ts.setdefault(r["t"], []).append(r["side"])
     assert ts and all(len(v) == 1 for v in ts.values())
+    # v2.8: replaying the recorded keypoints reproduces the live session
+    import subprocess
+    rp = os.path.join(os.path.dirname(__file__), "..", "scripts", "replay.py")
+    rcsv = tmp_path / "replay.csv"
+    subprocess.run([sys.executable, rp, str(tmp_path / "kp.jsonl"), "--calib", str(calib),
+                    "--thigh-mm", str(p["L_thigh_L"]), "--shin-mm", str(p["L_shin_L"]), "--csv", str(rcsv)], check=True)
+    rrows = list(csv.DictReader(open(rcsv)))
+    assert len(rrows) >= 0.95 * len(rows)      # replay also tracks the live standing-calibration frames
     print(f"\nend-to-end: {len(left)} left frames, knee angle error median {np.median(err):.2f} deg, "
           f"p95 {np.percentile(err, 95):.2f} deg (twist +/-35 deg)")

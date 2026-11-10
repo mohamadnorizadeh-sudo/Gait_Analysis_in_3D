@@ -233,7 +233,11 @@ class GaitTracker:
         if self.neutral is not None and self.neutral.offset is None:
             if len(flex) == 2 and self.neutral.add(t, flex):
                 pass
-            out.status = "NEUTRAL: stand straight & still" if self.neutral.offset is None else "neutral offset saved"
+            if self.neutral.offset is None:
+                el = 0.0 if self.neutral.t0 is None else t - self.neutral.t0
+                out.status = f"STAND STRAIGHT & STILL  {min(el, self.neutral.seconds):.1f}/{self.neutral.seconds:.0f} s"
+            else:
+                out.status = f"neutral saved (L {self.neutral.offset['L']:.0f}, R {self.neutral.offset['R']:.0f} deg)"
         off = self.neutral.offset if (self.neutral is not None and self.neutral.offset) else {}
         out.flexion_corrected = {s: f - off.get(s, 0.0) for s, f in flex.items()}
         if not out.status:

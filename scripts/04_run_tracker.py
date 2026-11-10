@@ -51,6 +51,7 @@ ap.add_argument("--headless", action="store_true")
 ap.add_argument("--seconds", type=float, default=0.0, help="stop after N seconds (0 = until q)")
 ap.add_argument("--save-video", default="")
 ap.add_argument("--web-port", type=int, default=8080, help="live web dashboard port (0 = off)")
+ap.add_argument("--record-kp", default="", help="also save raw keypoints (JSON lines) for offline replay")
 ap.add_argument("--source", choices=["picamera", "shm"], default="picamera",
                 help="shm = read frames from the running camera_shm_writer.py (cameras stay with it)")
 ap.add_argument("--rot-left", type=int, default=0, help="extra rotation of the LEFT image (0/90/180/270)")
@@ -94,12 +95,17 @@ if args.sgbm:
 log = CsvLogger(args.csv)
 from gait3d.dashboard import LiveData, WebDashboard, render_screen  # noqa: E402
 live = LiveData()
+from gait3d.recorder import KeypointRecorder  # noqa: E402
+rec = KeypointRecorder(args.record_kp) if args.record_kp else None
 live.csv_path = args.csv
 web = WebDashboard(live, args.web_port).start() if args.web_port else None
 if web:
     import socket
-    try:
-        ip = socket.gethostbyname(socket.gethostname())
+    try:                                   # primary LAN address (not 127.0.1.1)
+        _s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        _s.connect(("10.255.255.255", 1))
+        ip = _s.getsockname()[0]
+        _s.close()
     except OSError:
         ip = "<pi-ip>"
     print(f"[web] live dashboard: http://{ip}:{args.web_port}  (or http://localhost:{args.web_port} on the Pi)")
@@ -122,6 +128,8 @@ try:
                 disp = sgbm.compute(gl, gr).astype(np.float32) / 16.0
                 sg = (cv2.reprojectImageTo3D(disp, geo.Q), disp, float(sgbm.getNumDisparities()))
             out = tracker.process(t, res_l, res_r, sg)
+            if rec:
+                rec.write(t, res_l, res_r)
             log.log(t, out)
             log.f.flush()
 
@@ -160,6 +168,8 @@ try:
                 break
 finally:
     log.close()
+    if rec:
+        rec.close()
     if writer:
         writer.release()
     cv2.destroyAllWindows()

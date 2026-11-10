@@ -96,3 +96,10 @@ Last live run (fixed mounting, 388 mm / 51°, calibration 0.24/0.32 px, 3D squar
   * Pi screen: camera overlay + live LEFT/RIGHT knee-flexion graphs (last 30 s) with big numbers.
   * Web page (`http://<pi-ip>:8080`): same live graphs, camera snapshot, Reset session, CSV download and a printable **session report** (mean, ROM p5–p95, peak, steps from swing peaks, L–R symmetry).
 * CSV is flushed every frame (no data loss if the tracker is stopped).
+
+## v2.8.0 — sessions without a terminal, offline replay (2026-11-10)
+
+* `scripts/start_session.sh` / `stop_session.sh` + desktop icons (`launchers/install_desktop_icons.sh`); settings in `config/session.env`. Each session gets its own folder with `angles.csv`, `keypoints.jsonl`, `summary.txt`.
+* **Keypoint recorder + `scripts/replay.py`:** the raw YOLO keypoints of both cameras are saved every frame, so filters and gates can be tuned offline on a real session instead of repeating walker sessions.
+* `docs/PROTOCOL.md`: session protocol for clinicians and a goniometer validation sheet (0/30/60/90°, both legs, acceptance proposal ≤ 5° mean error).
+* Web dashboard prints the Pi's real LAN address; neutral trial shows a countdown and the saved offsets.

@@ -53,6 +53,16 @@ At start the subject **stands straight for 2 s** (bone calibration; saved to
 Joint dot colours: green = measured depth, orange = depth reconstructed from
 bone length, red = from temporal prior only.
 
+## Doctors: one-click sessions (v2.8)
+
+```bash
+bash launchers/install_desktop_icons.sh     # once: Start / Stop icons on the Pi desktop
+```
+Settings (bone lengths, rotation, model, calibration) are in `config/session.env`.
+Live graphs on the Pi screen and at `http://<pi-address>:8080`. See **[docs/PROTOCOL.md](docs/PROTOCOL.md)**
+for the session protocol and the goniometer validation sheet. Every session also records the raw keypoints;
+`scripts/replay.py` re-runs a session offline with different settings.
+
 ## Notes
 
 * Calibrate and track with the **same** `--lens` value and resolution.
