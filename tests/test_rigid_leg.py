@@ -202,3 +202,11 @@ def test_bone_calibration_median():
         assert t < 5
     prof = cal.result()
     assert abs(prof.L_thigh_L - L_THIGH) < 15 and abs(prof.L_shin_R - L_SHIN) < 15
+
+
+def test_prior_alone_does_not_keep_a_leg_alive():
+    """v2.6: live a prior-only solution re-fed itself and froze a leg at 160 deg."""
+    geo, rng = make_geo(), np.random.default_rng(5)
+    s = RigidLegSolver(L_THIGH, L_SHIN)
+    assert run_solver(geo, leg_pose(140, np.eye(3)), rng, solver=s) is not None
+    assert run_solver(geo, leg_pose(140, np.eye(3)), rng, solver=s, drop=("hip", "knee", "ankle")) is None

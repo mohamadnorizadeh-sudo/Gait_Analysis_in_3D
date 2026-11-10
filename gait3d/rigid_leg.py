@@ -198,9 +198,11 @@ class RigidLegSolver:
             if init[i] is None and anchors:
                 # closest point on this ray to the mean of the known joints
                 init[i] = max(10.0, t_closest(i, np.mean(anchors, axis=0)))
-        if any(v is None for v in init):
-            # Nothing measured this frame and no recent history: no 3D lock.
-            # (We deliberately do NOT fall back to a 2D pixel angle.)
+        if any(v is None for v in init) or all(v is None for v in zm):
+            # No 3D measurement this frame (or none at all): no 3D lock.
+            # v2.6: a prior alone is NOT enough -- live on the walker a prior-only
+            # solution kept re-feeding itself and froze a leg at 160 deg for 20 s.
+            # (We also deliberately do NOT fall back to a 2D pixel angle.)
             self._prev_age += 1
             return None
         z = np.array(init, float)

@@ -47,18 +47,52 @@ class FrameOutput:
     shin_measured: Dict[str, float] = field(default_factory=dict)  # raw stereo knee-ankle distance (validation)
     obs: Dict[str, LegObs] = field(default_factory=dict)
     angle_filtered: Dict[str, float] = field(default_factory=dict)
+    flexion_corrected: Dict[str, float] = field(default_factory=dict)   # filtered flexion minus standing offset
     status: str = ""
+
+
+class NeutralOffset:
+    """v2.6 standing ('neutral') trial: pose keypoints sit on the skin/surface,
+    not at the joint centres, so a straight leg reads ~10-20 deg of flexion
+    (seen live: 13-20 deg while standing). Like a gait-lab static trial, the
+    median flexion during quiet standing is recorded per leg and subtracted."""
+
+    def __init__(self, seconds=3.0, max_spread=8.0):
+        self.seconds, self.max_spread = seconds, max_spread
+        self.samples = {"L": [], "R": []}
+        self.t0 = None
+        self.offset = None
+
+    def add(self, t, flex):
+        if self.t0 is None:
+            self.t0 = t
+        for s, f in flex.items():
+            self.samples[s].append(f)
+        if t - self.t0 >= self.seconds and all(len(v) >= 8 for v in self.samples.values()):
+            off = {}
+            for s, v in self.samples.items():
+                v = np.asarray(v)
+                med = float(np.median(v))
+                if np.percentile(v, 90) - np.percentile(v, 10) > self.max_spread or med > 35:
+                    self.t0, self.samples = None, {"L": [], "R": []}     # not still/straight: retry
+                    return False
+                off[s] = med
+            self.offset = off
+            return True
+        return False
 
 
 class GaitTracker:
     def __init__(self, geo: StereoGeometry, profile: Optional[SubjectProfile] = None,
-                 cfg: TrackerConfig = TrackerConfig(), calib_seconds: float = 2.0):
+                 cfg: TrackerConfig = TrackerConfig(), calib_seconds: float = 2.0,
+                 neutral_seconds: float = 3.0):
         self.geo, self.cfg = geo, cfg
         self.profile = profile
         self.calibrator = None if profile else BoneLengthCalibrator(calib_seconds)
         self.solvers: Dict[str, RigidLegSolver] = {}
         self.filters = {s: OneEuroFilter(cfg.filter_min_cutoff, cfg.filter_beta) for s in "LR"}
         self.identity = LegIdentity()
+        self.neutral = NeutralOffset(neutral_seconds) if neutral_seconds > 0 else None
         if profile:
             self._make_solvers()
 
@@ -175,7 +209,15 @@ class GaitTracker:
         for side in "LR":
             if side not in out.legs:
                 self.filters[side].reset()
-        out.status = "3D rigid lock" if out.legs else "waiting for legs (conf < 0.5)"
+        flex = {s: 180.0 - a for s, a in out.angle_filtered.items()}
+        if self.neutral is not None and self.neutral.offset is None:
+            if len(flex) == 2 and self.neutral.add(t, flex):
+                pass
+            out.status = "NEUTRAL: stand straight & still" if self.neutral.offset is None else "neutral offset saved"
+        off = self.neutral.offset if (self.neutral is not None and self.neutral.offset) else {}
+        out.flexion_corrected = {s: f - off.get(s, 0.0) for s, f in flex.items()}
+        if not out.status:
+            out.status = "3D rigid lock" if out.legs else "waiting for legs (conf < 0.5)"
         return out
 
 
@@ -199,8 +241,8 @@ def draw(frame, out: FrameOutput, fps=0.0, skew_ms=0.0):
             c = SRC_COLORS[res.source[n]] if res else (200, 200, 200)
             cv2.circle(img, pts[j], 6 if n == "knee" else 4, c, -1)
         if res is not None:
-            ang = out.angle_filtered.get(side, res.angle_deg)
-            cv2.putText(img, f"{side} {180 - ang:.0f} flex", (pts[1][0] + 10, pts[1][1] - 10),
+            fc = out.flexion_corrected.get(side, 180 - out.angle_filtered.get(side, res.angle_deg))
+            cv2.putText(img, f"{side} {fc:.0f} flex", (pts[1][0] + 10, pts[1][1] - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
     cv2.rectangle(img, (8, 8), (400, 96), (25, 25, 25), -1)
@@ -210,7 +252,8 @@ def draw(frame, out: FrameOutput, fps=0.0, skew_ms=0.0):
         if side in out.legs:
             r = out.legs[side]
             a = out.angle_filtered.get(side, r.angle_deg)
-            txt = f"{side}: flex {180 - a:5.1f}  (knee {a:5.1f})  Z {r.knee[2] / 10:.0f}cm"
+            fc = out.flexion_corrected.get(side, 180 - a)
+            txt = f"{side}: flex {fc:5.1f}  (raw {180 - a:5.1f})  Z {r.knee[2] / 10:.0f}cm"
         else:
             txt = f"{side}: --"
         cv2.putText(img, txt, (16, y), cv2.FONT_HERSHEY_SIMPLEX, 0.45, COLORS[side], 1)
@@ -223,7 +266,8 @@ def draw(frame, out: FrameOutput, fps=0.0, skew_ms=0.0):
 class CsvLogger:
     FIELDS = ["t", "side", "knee_angle_deg", "flexion_deg", "flexion_filtered_deg",
               "hip_x", "hip_y", "hip_z", "knee_x", "knee_y", "knee_z", "ankle_x", "ankle_y", "ankle_z",
-              "src_hip", "src_knee", "src_ankle", "thigh_mm", "shin_mm", "shin_stereo_mm"]
+              "src_hip", "src_knee", "src_ankle", "thigh_mm", "shin_mm", "shin_stereo_mm",
+              "flexion_corrected_deg"]
 
     def __init__(self, path):
         self.f = open(path, "w", newline="")
@@ -236,7 +280,8 @@ class CsvLogger:
                    "flexion_deg": f"{r.flexion_deg:.2f}",
                    "flexion_filtered_deg": f"{180 - out.angle_filtered.get(side, r.angle_deg):.2f}",
                    "thigh_mm": f"{r.thigh_mm:.1f}", "shin_mm": f"{r.shin_mm:.1f}",
-                   "shin_stereo_mm": f"{out.shin_measured[side]:.1f}" if side in out.shin_measured else ""}
+                   "shin_stereo_mm": f"{out.shin_measured[side]:.1f}" if side in out.shin_measured else "",
+                   "flexion_corrected_deg": f"{out.flexion_corrected[side]:.2f}" if side in out.flexion_corrected else ""}
             for n, P in (("hip", r.hip), ("knee", r.knee), ("ankle", r.ankle)):
                 row[f"{n}_x"], row[f"{n}_y"], row[f"{n}_z"] = (f"{v:.1f}" for v in P)
                 row[f"src_{n}"] = r.source[n]

@@ -68,3 +68,20 @@ All 19 tests pass on the Pi (7.2 s).
 | 2.5.0 | While one leg twists behind the other, **YOLO gives its shin the other leg's label** (15 jumps > 150 mm in 949 frames, flexion spikes to 143°) | `LegIdentity`: per-joint L/R continuity against the previous frame, duplicated joints kept only by the leg that owned them, single legs relabelled; knee motion gate (> 300 mm per frame rejected) |
 
 Thigh/shin tape lengths (trochanter → knee joint line → lateral malleolus): 42 / 41 cm. Direct stereo knee–ankle distance: 47–49 cm (keypoint placement differs between the two very different views; the bone constraint uses the tape values).
+
+## v2.6.0 — AI HAT+ 2 live, neutral offset, no frozen legs (2026-11-10)
+
+Live comparison on the re-mounted rig (cameras 455 mm apart, 22° convergence; full recalibration: RMS 0.46/0.46 px, stereo 0.57 px):
+
+| | CPU YOLOv8n @320 | **Hailo-10H YOLOv8m @640** |
+|---|---|---|
+| Frames logged in ~2.5 min | 779 | **2264** (≈ 11–12 fps) |
+| Ankle jumps > 150 mm | 23 (3.0 %) | **15 (0.7 %)** |
+| Ankle motion p95 per frame | 110 mm | **59 mm** |
+| Quiet standing, spread per 2 s | 8–75° | **2–8°** |
+| Held bend, spread per 2 s | 3–22° | **3–9°** |
+
+Found and fixed:
+* **Frozen leg:** with no measurement at all, the previous frame's solution was accepted as a "prior" and kept re-feeding itself (left knee frozen at 160° for 20 s). A frame now needs at least one measured joint.
+* **Straight leg reads 13–20°:** pose keypoints lie on the skin, not at joint centres. A 3-s **neutral (standing) trial** at start records each leg's offset, which is subtracted (`flexion_corrected_deg`), as in gait-lab static trials.
+* Stereo knee–ankle distance still 9–22 % longer than the tape (bone constraint uses the tape values).

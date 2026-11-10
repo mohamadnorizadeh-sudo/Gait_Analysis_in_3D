@@ -33,3 +33,14 @@ def test_single_leg_relabelled():
     idn.update("R", 0.0, [[200, 100], [200, 250], [200, 400]])
     out = idn.fix({"L": obs("L", [[199, 99], [201, 251], [200, 399]])}, 0.2)
     assert set(out) == {"R"}
+
+
+def test_neutral_offset():
+    from gait3d.tracker import NeutralOffset
+    n = NeutralOffset(seconds=1.0)
+    t, done = 0.0, False
+    while not done:
+        done = n.add(t, {"L": 15.0 + 0.5 * np.sin(t * 9), "R": 18.0})
+        t += 0.1
+        assert t < 5
+    assert abs(n.offset["L"] - 15.0) < 0.6 and n.offset["R"] == 18.0
