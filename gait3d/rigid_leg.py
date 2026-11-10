@@ -156,19 +156,26 @@ class RigidLegSolver:
         return np.zeros(3), np.asarray(ray, float)
 
     def solve(self, rays: Dict[str, object], meas_z: Dict[str, Optional[float]],
-              hints: Optional[Dict[str, np.ndarray]] = None) -> Optional[LegResult]:
+              hints: Optional[Dict[str, np.ndarray]] = None,
+              meas_scale: Optional[Dict[str, float]] = None) -> Optional[LegResult]:
         """rays: joint -> left pixel ray (r_z = 1) or (origin, dir) from the other camera.
         meas_z: joint -> measured depth (left-camera Z, only for left rays) or None.
         hints: joint -> LOW-confidence left pixel ray.  Not trusted as a
         measurement, only used to pick the correct one of the two ray-sphere
         roots (front/back) for a joint that only the other camera sees."""
         hints = hints or {}
+        meas_scale = meas_scale or {}
         prevP = self._prev if (self._prev is not None and self._prev_age <= self.max_prior_age) else None
         names = JOINTS
         O, R = zip(*[self._split(rays[n]) for n in names])
         left_ray = [not isinstance(rays[n], tuple) for n in names]
         zm = [meas_z.get(n) if left_ray[i] else None for i, n in enumerate(names)]
         zm = [None if (z is None or not np.isfinite(z) or z <= 0) else float(z) for z in zm]
+        # v2.7: measurement noise grows when the pose model is less sure (scale >= 1)
+        msc = [float(meas_scale.get(n, 1.0)) for n in names]
+
+        def sg(i):
+            return self._sigma(zm[i]) * msc[i]
 
         def t_closest(i, P):
             d = R[i]
@@ -216,7 +223,7 @@ class RigidLegSolver:
             ]
             for i in range(3):
                 if zm[i] is not None:
-                    res.append(np.sqrt(w_meas[i]) * (zv[i] - zm[i]) / self._sigma(zm[i]))
+                    res.append(np.sqrt(w_meas[i]) * (zv[i] - zm[i]) / sg(i))
                 if prev is not None:
                     res.append((zv[i] - prev[i]) / self.prior_sigma_mm)
             return np.array(res)
@@ -226,7 +233,7 @@ class RigidLegSolver:
         for _ in range(25):
             for i in range(3):
                 if zm[i] is not None:
-                    e = abs(z[i] - zm[i]) / self._sigma(zm[i])
+                    e = abs(z[i] - zm[i]) / sg(i)
                     w[i] = 1.0 if e <= self.huber_k else self.huber_k / e
             r0 = residuals(z, w)
             J = np.empty((r0.size, 3))
@@ -278,7 +285,7 @@ class RigidLegSolver:
         for i, n, zf in zip(range(3), names, (z_h, z[1], z_a)):
             if zm[i] is None:
                 src[n] = "constrained" if any(v is not None for v in zm) else "prior"
-            elif abs(zf - zm[i]) <= 2.5 * self._sigma(zm[i]):
+            elif abs(zf - zm[i]) <= 2.5 * sg(i):
                 src[n] = "measured"
             else:
                 src[n] = "constrained"     # measured depth rejected as outlier

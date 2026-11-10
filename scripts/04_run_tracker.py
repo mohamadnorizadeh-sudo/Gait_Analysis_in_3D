@@ -50,6 +50,7 @@ ap.add_argument("--csv", default=time.strftime("gait_%Y%m%d_%H%M%S.csv"))
 ap.add_argument("--headless", action="store_true")
 ap.add_argument("--seconds", type=float, default=0.0, help="stop after N seconds (0 = until q)")
 ap.add_argument("--save-video", default="")
+ap.add_argument("--web-port", type=int, default=8080, help="live web dashboard port (0 = off)")
 ap.add_argument("--source", choices=["picamera", "shm"], default="picamera",
                 help="shm = read frames from the running camera_shm_writer.py (cameras stay with it)")
 ap.add_argument("--rot-left", type=int, default=0, help="extra rotation of the LEFT image (0/90/180/270)")
@@ -91,6 +92,17 @@ if args.sgbm:
     print(f"[sgbm] numDisparities={nd} -> closest Z {geo.min_measurable_depth(0, nd) / 10:.1f} cm")
 
 log = CsvLogger(args.csv)
+from gait3d.dashboard import LiveData, WebDashboard, render_screen  # noqa: E402
+live = LiveData()
+live.csv_path = args.csv
+web = WebDashboard(live, args.web_port).start() if args.web_port else None
+if web:
+    import socket
+    try:
+        ip = socket.gethostbyname(socket.gethostname())
+    except OSError:
+        ip = "<pi-ip>"
+    print(f"[web] live dashboard: http://{ip}:{args.web_port}  (or http://localhost:{args.web_port} on the Pi)")
 writer = None
 fps, t_prev, t0 = 0.0, None, time.monotonic()
 saved_profile = profile
@@ -111,12 +123,16 @@ try:
                 sg = (cv2.reprojectImageTo3D(disp, geo.Q), disp, float(sgbm.getNumDisparities()))
             out = tracker.process(t, res_l, res_r, sg)
             log.log(t, out)
+            log.f.flush()
 
             now = time.monotonic()
             if t_prev is not None:
                 fps = 0.9 * fps + 0.1 / max(1e-3, now - t_prev) if fps else 1.0 / max(1e-3, now - t_prev)
             t_prev = now
             vis = draw(rl, out, fps, skew)
+            if tracker.profile is not None:
+                live.subject = {s_: f"{tracker.profile.lengths(s_)[0]:.0f}/{tracker.profile.lengths(s_)[1]:.0f}" for s_ in "LR"}
+            live.push(t, out.flexion_corrected, out.status, fps, vis)
             if args.save_video:
                 if writer is None:
                     writer = cv2.VideoWriter(args.save_video, cv2.VideoWriter_fourcc(*"mp4v"), 15,
@@ -126,7 +142,7 @@ try:
                 legs = "  ".join(f"{s}:{180 - out.angle_filtered[s]:5.1f}" for s in out.angle_filtered)
                 print(f"{fps:4.1f} fps  skew {skew:4.1f}ms  {out.status:<40} {legs}", end="\r")
             else:
-                cv2.imshow("Gait 3D v2", vis)
+                cv2.imshow("Gait 3D v2 - knee flexion", render_screen(vis, live))
                 k = cv2.waitKey(1) & 0xFF
                 if k == ord("q"):
                     break

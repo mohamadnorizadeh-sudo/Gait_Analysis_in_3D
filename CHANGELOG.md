@@ -85,3 +85,14 @@ Found and fixed:
 * **Frozen leg:** with no measurement at all, the previous frame's solution was accepted as a "prior" and kept re-feeding itself (left knee frozen at 160° for 20 s). A frame now needs at least one measured joint.
 * **Straight leg reads 13–20°:** pose keypoints lie on the skin, not at joint centres. A 3-s **neutral (standing) trial** at start records each leg's offset, which is subtracted (`flexion_corrected_deg`), as in gait-lab static trials.
 * Stereo knee–ankle distance still 9–22 % longer than the tape (bone constraint uses the tape values).
+
+## v2.7.0 — smoother angles + doctors' display (2026-11-10)
+
+Last live run (fixed mounting, 388 mm / 51°, calibration 0.24/0.32 px, 3D squares 25.015 ± 0.27 mm): left-knee hold 51–54° (±2°), but right-knee holds and quiet standing still had 8–34° spread per 2 s.
+
+* **3D direction smoothing:** the thigh and shin unit vectors are One-Euro filtered in 3D and the angle is taken from the filtered vectors (rotation-invariant). Synthetic static leg with 2.5 px keypoint noise: angle SD 5.9° → 3.4°.
+* **Confidence weighting:** each joint's depth measurement noise is scaled by 1 / min(cam0, cam1 confidence), so obliquely seen joints count less.
+* **Doctors' display:**
+  * Pi screen: camera overlay + live LEFT/RIGHT knee-flexion graphs (last 30 s) with big numbers.
+  * Web page (`http://<pi-ip>:8080`): same live graphs, camera snapshot, Reset session, CSV download and a printable **session report** (mean, ROM p5–p95, peak, steps from swing peaks, L–R symmetry).
+* CSV is flushed every frame (no data loss if the tracker is stopped).

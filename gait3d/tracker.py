@@ -38,6 +38,8 @@ class TrackerConfig:
     ghost_3d_mm: float = 60.0
     filter_min_cutoff: float = 1.2
     filter_beta: float = 0.03
+    dir_min_cutoff: float = 1.0       # Hz, 3D bone-direction smoothing when still
+    dir_beta: float = 2.0             # higher = less lag when the leg moves fast
 
 
 @dataclass
@@ -92,6 +94,8 @@ class GaitTracker:
         self.solvers: Dict[str, RigidLegSolver] = {}
         self.filters = {s: OneEuroFilter(cfg.filter_min_cutoff, cfg.filter_beta) for s in "LR"}
         self.identity = LegIdentity()
+        # v2.7: smooth the thigh and shin DIRECTIONS in 3D (6 One-Euro filters per leg)
+        self.dir_filters = {s: [OneEuroFilter(cfg.dir_min_cutoff, cfg.dir_beta) for _ in range(6)] for s in "LR"}
         self.neutral = NeutralOffset(neutral_seconds) if neutral_seconds > 0 else None
         if profile:
             self._make_solvers()
@@ -107,6 +111,18 @@ class GaitTracker:
             f.reset()
 
     # ------------------------------------------------------------------ #
+    def _smooth_angle(self, side, res, t):
+        """v2.7: filter the unit thigh/shin vectors, then take the angle.
+        Smoothing in 3D (not the angle) removes keypoint jitter while keeping
+        the measurement rotation-invariant."""
+        u = (res.hip - res.knee) / np.linalg.norm(res.hip - res.knee)
+        v = (res.ankle - res.knee) / np.linalg.norm(res.ankle - res.knee)
+        f = self.dir_filters[side]
+        uf = np.array([f[i](float(u[i]), t) for i in range(3)])
+        vf = np.array([f[3 + i](float(v[i]), t) for i in range(3)])
+        c = float(uf @ vf / (np.linalg.norm(uf) * np.linalg.norm(vf)))
+        return float(np.degrees(np.arccos(np.clip(c, -1.0, 1.0))))
+
     def _measure(self, obs: LegObs, sgbm=None):
         """Per-joint depth: stereo triangulation first, SGBM patch second."""
         zs, pts = {}, {}
@@ -172,8 +188,10 @@ class GaitTracker:
             zs, mp = self._measure(obs, sgbm)
             if "knee" in mp and "ankle" in mp:
                 out.shin_measured[side] = float(np.linalg.norm(mp["knee"] - mp["ankle"]))
-            rays, hints = {}, {}
+            rays, hints, mscale = {}, {}, {}
             for j, n in enumerate(JOINTS):
+                cr = obs.conf_r[j] if obs.conf_r is not None else obs.conf[j]
+                mscale[n] = 1.0 / max(0.3, min(obs.conf[j], cr))     # v2.7 confidence weighting
                 if obs.conf[j] >= self.cfg.kp_conf or obs.conf_r is None or not hasattr(self.geo, "C_r"):
                     rays[n] = self.geo.ray(*obs.xy[j])
                 else:
@@ -181,7 +199,7 @@ class GaitTracker:
                     rays[n] = (self.geo.C_r, self.geo.ray_right_in_left(*obs.xy_r[j]))
                     hints[n] = self.geo.ray(*obs.xy[j])     # cam0's low-confidence guess
                     zs[n] = None
-            res = self.solvers[side].solve(rays, zs, hints)
+            res = self.solvers[side].solve(rays, zs, hints, mscale)
             if res is not None:
                 out.legs[side] = res
                 if hasattr(self.geo, "project_left"):
@@ -205,10 +223,12 @@ class GaitTracker:
             self.__dict__.setdefault("_last_knee", {})[side] = (t, res.knee.copy())
             if side in out.proj:
                 self.identity.update(side, t, out.proj[side])
-            out.angle_filtered[side] = self.filters[side](res.angle_deg, t)
+            out.angle_filtered[side] = self._smooth_angle(side, res, t)
         for side in "LR":
             if side not in out.legs:
                 self.filters[side].reset()
+                for f in self.dir_filters[side]:
+                    f.reset()
         flex = {s: 180.0 - a for s, a in out.angle_filtered.items()}
         if self.neutral is not None and self.neutral.offset is None:
             if len(flex) == 2 and self.neutral.add(t, flex):
