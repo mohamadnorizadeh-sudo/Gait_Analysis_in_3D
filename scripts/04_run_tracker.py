@@ -35,7 +35,8 @@ from gait3d.tracker import CsvLogger, GaitTracker, TrackerConfig, draw  # noqa: 
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--calib", default="stereo_calibration.npz")
-ap.add_argument("--model", default="yolov8n-pose.pt")
+ap.add_argument("--model", default="yolov8n-pose.pt",
+                help="Ultralytics weights, or a Hailo .hef (e.g. /usr/share/hailo-models/yolov8m_pose_h10.hef)")
 ap.add_argument("--imgsz", type=int, default=480)
 ap.add_argument("--lens", type=float, default=3.0, help="LensPosition (dioptres) - same as calibration!")
 ap.add_argument("--profile", default=None, help="reuse bone lengths from a saved profile JSON")
@@ -75,7 +76,12 @@ if profile:
           f"shin L/R {profile.L_shin_L:.0f}/{profile.L_shin_R:.0f} mm ({profile.method})")
 
 tracker = GaitTracker(geo, profile, TrackerConfig(kp_conf=args.kp_conf))
-pose = PoseEstimator(args.model, args.imgsz)
+if args.model.endswith(".hef"):
+    from gait3d.hailo_pose import HailoPoseEstimator          # AI HAT+ 2 (Hailo-10H), v2.4
+    pose = HailoPoseEstimator(args.model)
+    print(f"[pose] Hailo {args.model}")
+else:
+    pose = PoseEstimator(args.model, args.imgsz)
 sgbm = None
 if args.sgbm:
     nd = geo.num_disparities_for(args.z_min_mm)

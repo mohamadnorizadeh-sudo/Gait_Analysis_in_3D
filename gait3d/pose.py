@@ -48,6 +48,8 @@ class LegObs:
 
 
 def people_from_result(result) -> List[Person]:
+    if isinstance(result, list):            # already decoded (Hailo backend, v2.4)
+        return result
     out = []
     kp = getattr(result, "keypoints", None)
     if kp is None or kp.xy is None or len(kp.xy) == 0:
