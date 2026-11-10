@@ -34,7 +34,7 @@ with ShmStereoSource(rot=(a.rot_left, a.rot_right)) as s:
             if a.show: cv2.drawChessboardCorners(vis[-1], CB, c, True)
             x, y, w, h = cv2.boundingRect(c.astype(np.float32))
             sh = cv2.Laplacian(g[max(0,y):y+h, max(0,x):x+w], cv2.CV_64F).var()
-            if sh < 60 or (v['last'] is not None and np.mean(np.linalg.norm(c - v['last'], axis=2)) < 30): continue
+            if sh < 60 or (v['last'] is not None and np.mean(np.linalg.norm(c.reshape(-1, 2) - v['last'].reshape(-1, 2), axis=1)) < 30): continue
             cv2.imwrite(f"{a.out}/{k}/img_{v['n']:02d}.png", im)
             cv2.fillConvexPoly(v['cov'], cv2.convexHull(c.astype(np.int32)), 255)
             v['last'] = c; v['n'] += 1

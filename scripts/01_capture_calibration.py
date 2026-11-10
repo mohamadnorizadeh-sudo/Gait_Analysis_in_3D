@@ -78,7 +78,7 @@ with open_source(args.source, lens_position=args.lens, swap=args.swap, rot=(args
             cv2.drawChessboardCorners(vis_l, CB, cl, True)
             cv2.drawChessboardCorners(vis_r, CB, cr, True)
             sh = min(sharpness(gl, cl), sharpness(gr, cr))
-            moved = last is None or np.mean(np.linalg.norm(cl - last, axis=2)) > args.min_move_px
+            moved = last is None or np.mean(np.linalg.norm(cl.reshape(-1, 2) - last.reshape(-1, 2), axis=1)) > args.min_move_px
             if sh < args.min_sharpness:
                 msg = f"blurry ({sh:.0f}) - hold still"
             elif not moved:
