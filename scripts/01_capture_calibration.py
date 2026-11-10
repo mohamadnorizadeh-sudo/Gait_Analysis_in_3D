@@ -38,6 +38,8 @@ ap.add_argument("--out", default="calib_data")
 ap.add_argument("--min-move-px", type=float, default=25.0)
 ap.add_argument("--min-sharpness", type=float, default=60.0)
 ap.add_argument("--source", choices=["picamera", "shm"], default="picamera")
+ap.add_argument("--rot-left", type=int, default=0, help="extra rotation of the LEFT image (0/90/180/270)")
+ap.add_argument("--rot-right", type=int, default=0, help="extra rotation of the RIGHT image, e.g. 180 if mounted upside down")
 ap.add_argument("--swap", action="store_true", help="shm source: use cam1 as the LEFT camera")
 ap.add_argument("--headless", action="store_true", help="no preview window (e.g. over a remote shell)")
 args = ap.parse_args()
@@ -63,7 +65,7 @@ count = len(os.listdir(f"{args.out}/left"))
 last = None
 coverage = None
 print(f"Starting at pair {count}. Press q to quit.")
-with open_source(args.source, lens_position=args.lens, swap=args.swap) as cam:
+with open_source(args.source, lens_position=args.lens, swap=args.swap, rot=(args.rot_left, args.rot_right)) as cam:
     while count < args.count:
         t, L, R, skew = cam.read()
         if coverage is None:

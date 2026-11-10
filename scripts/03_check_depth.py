@@ -29,6 +29,8 @@ ap.add_argument("--z-min-mm", type=float, default=150.0)
 ap.add_argument("--frames", type=int, default=0, help="stop after N frames (0 = until q)")
 ap.add_argument("--headless", action="store_true")
 ap.add_argument("--source", choices=["picamera", "shm"], default="picamera")
+ap.add_argument("--rot-left", type=int, default=0, help="extra rotation of the LEFT image (0/90/180/270)")
+ap.add_argument("--rot-right", type=int, default=0, help="extra rotation of the RIGHT image, e.g. 180 if mounted upside down")
 ap.add_argument("--swap", action="store_true")
 args = ap.parse_args()
 
@@ -42,7 +44,7 @@ print(f"-> for Z_min = {args.z_min_mm / 10:.0f} cm use numDisparities = {nd}")
 (ml, mr) = geo.rectify_maps()
 sgbm = make_sgbm(nd)
 n = 0
-with open_source(args.source, lens_position=args.lens, swap=args.swap) as cam:
+with open_source(args.source, lens_position=args.lens, swap=args.swap, rot=(args.rot_left, args.rot_right)) as cam:
     while True:
         t, L, R, skew = cam.read()
         rl = cv2.remap(L, *ml, cv2.INTER_LINEAR)

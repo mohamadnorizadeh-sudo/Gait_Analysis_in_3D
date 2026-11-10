@@ -8,12 +8,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from gait3d.camera import ShmStereoSource
 ap = argparse.ArgumentParser()
 ap.add_argument('--out', default='runs/calib_shm/mono'); ap.add_argument('--count', type=int, default=35)
+ap.add_argument('--rot-left', type=int, default=0); ap.add_argument('--rot-right', type=int, default=0)
 ap.add_argument('--cols', type=int, default=9); ap.add_argument('--rows', type=int, default=6)
 a = ap.parse_args(); CB = (a.cols, a.rows)
 F = cv2.CALIB_CB_ADAPTIVE_THRESH | cv2.CALIB_CB_NORMALIZE_IMAGE | cv2.CALIB_CB_FAST_CHECK
 st = {k: dict(n=0, last=None, cov=None) for k in ('cam0', 'cam1')}
 for k in st: os.makedirs(f'{a.out}/{k}', exist_ok=True)
-with ShmStereoSource() as s:
+with ShmStereoSource(rot=(a.rot_left, a.rot_right)) as s:
     while min(v['n'] for v in st.values()) < a.count:
         t, im0, im1, dt = s.read()
         for k, im in (('cam0', im0), ('cam1', im1)):

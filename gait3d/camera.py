@@ -204,8 +204,11 @@ class ShmStereoSource:
     THIS source to be valid for it (scripts/01_capture_calibration.py --shm).
     """
 
-    def __init__(self, name="cam_frame_shm", left="cam0", swap=False, poll_s=0.002):
+    def __init__(self, name="cam_frame_shm", left="cam0", swap=False, poll_s=0.002, rot=(0, 0)):
         self.name, self.poll_s = name, poll_s
+        # extra rotation (deg, multiple of 90) applied to (left, right) AFTER the writer's own
+        # rotation -- e.g. a camera re-mounted upside down (v2.5.1). Calibrate with the same value.
+        self.rot = tuple(int(r) % 360 for r in rot)
         self.keys = ("cam1", "cam0") if swap else (left, "cam1" if left == "cam0" else "cam0")
         self.shm = None
         self._last_seq = None
@@ -245,6 +248,8 @@ class ShmStereoSource:
         import msgpack
         p = msgpack.unpackb(self._snapshot())
         imgs = [cv2.imdecode(np.frombuffer(p[k], np.uint8), cv2.IMREAD_COLOR) for k in self.keys]
+        codes = {90: cv2.ROTATE_90_CLOCKWISE, 180: cv2.ROTATE_180, 270: cv2.ROTATE_90_COUNTERCLOCKWISE}
+        imgs = [cv2.rotate(im, codes[r]) if r in codes else im for im, r in zip(imgs, self.rot)]
         ts = int(p.get("ts0", time.monotonic_ns()))
         return ts * 1e-9, imgs[0], imgs[1], float(p.get("dt_ms", 0.0))
 
@@ -257,5 +262,5 @@ class ShmStereoSource:
 def open_source(kind="picamera", **kw):
     """'picamera' -> StereoCamera (needs free cameras), 'shm' -> ShmStereoSource."""
     if kind == "shm":
-        return ShmStereoSource(**{k: v for k, v in kw.items() if k in ("name", "left", "swap")})
-    return StereoCamera(**{k: v for k, v in kw.items() if k not in ("name", "left", "swap")})
+        return ShmStereoSource(**{k: v for k, v in kw.items() if k in ("name", "left", "swap", "rot")})
+    return StereoCamera(**{k: v for k, v in kw.items() if k not in ("name", "left", "swap", "rot")})

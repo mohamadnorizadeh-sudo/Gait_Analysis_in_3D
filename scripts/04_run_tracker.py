@@ -52,6 +52,8 @@ ap.add_argument("--seconds", type=float, default=0.0, help="stop after N seconds
 ap.add_argument("--save-video", default="")
 ap.add_argument("--source", choices=["picamera", "shm"], default="picamera",
                 help="shm = read frames from the running camera_shm_writer.py (cameras stay with it)")
+ap.add_argument("--rot-left", type=int, default=0, help="extra rotation of the LEFT image (0/90/180/270)")
+ap.add_argument("--rot-right", type=int, default=0, help="extra rotation of the RIGHT image, e.g. 180 if mounted upside down")
 ap.add_argument("--swap", action="store_true", help="shm source: use cam1 as the LEFT camera")
 args = ap.parse_args()
 
@@ -93,7 +95,7 @@ writer = None
 fps, t_prev, t0 = 0.0, None, time.monotonic()
 saved_profile = profile
 try:
-    with open_source(args.source, lens_position=args.lens, swap=args.swap) as cam:
+    with open_source(args.source, lens_position=args.lens, swap=args.swap, rot=(args.rot_left, args.rot_right)) as cam:
         while True:
             t, L, R, skew = cam.read()
             if RECT:
