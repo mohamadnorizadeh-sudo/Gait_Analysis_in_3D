@@ -9,7 +9,7 @@ from gait3d.pose import PoseEstimator, people_from_result, best_person
 import cv2
 
 hef = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_HEF
-hp = HailoPoseEstimator(hef)
+hp = HailoPoseEstimator(hef, det_conf=float(sys.argv[2]) if len(sys.argv) > 2 else 0.25)
 with ShmStereoSource() as s:
     t, L, R, dt = s.read()
 lb, *_ = letterbox(cv2.cvtColor(L, cv2.COLOR_BGR2RGB), hp.size)
@@ -25,7 +25,7 @@ res_c = cpu([L, R])
 names = ['Lhip', 'Rhip', 'Lknee', 'Rknee', 'Lank', 'Rank']
 for cam, h, c in (('cam0', res_h[0], res_c[0]), ('cam1', res_h[1], res_c[1])):
     a, b = best_person(h), best_person(people_from_result(c))
-    print(cam, 'hailo persons', len(h), '| cpu persons', len(people_from_result(c)))
+    print(cam, 'hailo persons', len(h), [round(p.score, 3) for p in h][:3], '| cpu persons', len(people_from_result(c)), [round(p.score, 3) for p in people_from_result(c)][:3])
     if a is not None and b is not None:
         for nm, k in zip(names, range(11, 17)):
             print(f'  {nm:6s} hailo ({a.xy[k,0]:6.1f},{a.xy[k,1]:6.1f}) c={a.conf[k]:.2f} | cpu ({b.xy[k,0]:6.1f},{b.xy[k,1]:6.1f}) c={b.conf[k]:.2f} | diff {np.linalg.norm(a.xy[k]-b.xy[k]):5.1f}px')

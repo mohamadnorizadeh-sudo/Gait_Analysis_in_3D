@@ -6,13 +6,13 @@ def test_decode_single_person():
     outs = {}
     for hw in (80, 40, 20):
         outs[f"b{hw}"] = np.zeros((hw, hw, 64), np.float32)
-        outs[f"c{hw}"] = np.full((hw, hw, 1), -10.0, np.float32)
+        outs[f"c{hw}"] = np.zeros((hw, hw, 1), np.float32)
         outs[f"k{hw}"] = np.zeros((hw, hw, 51), np.float32)
     # one detection on the stride-16 grid (40x40) at cell (x=10, y=20)
     b = np.full((4, 16), -10.0, np.float32)
     b[:, 3] = 10.0                                   # each side distance = 3 cells
     outs["b40"][20, 10] = b.ravel()
-    outs["c40"][20, 10, 0] = 5.0
+    outs["c40"][20, 10, 0] = 0.995
     k = np.zeros((17, 3), np.float32)
     k[13] = [0.5, -0.25, 4.0]                        # left knee
     outs["k40"][20, 10] = k.ravel()

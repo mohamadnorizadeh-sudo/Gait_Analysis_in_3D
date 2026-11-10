@@ -5,8 +5,10 @@ The Pi already ships compiled pose models for the Hailo-10H:
     /usr/share/hailo-models/yolov8m_pose_h10.hef   (more accurate)
 They take a 640x640 UINT8 RGB image and return, for each stride (8, 16, 32):
     box  (H, W, 64)  DFL distances (4 sides x 16 bins)
-    cls  (H, W, 1)   person score
-    kpt  (H, W, 51)  17 keypoints x (dx, dy, visibility)
+    cls  (H, W, 1)   person score, ALREADY a probability (sigmoid on-chip;
+                     verified on the Pi: range 0..1, applying sigmoid again
+                     turned every cell into a 0.5 "person")
+    kpt  (H, W, 51)  17 keypoints x (dx, dy, visibility logit)
 This module runs the HEF with HailoRT and decodes those tensors into the same
 Person objects the CPU path produces, so the rest of the tracker is unchanged.
 """
@@ -37,7 +39,7 @@ def letterbox(img, size=640):
     return out, s, left, top
 
 
-def decode(outputs: dict, conf_thr=0.25, iou_thr=0.6, size=640, sigmoid_cls=True, sigmoid_kpt=True):
+def decode(outputs: dict, conf_thr=0.25, iou_thr=0.6, size=640, sigmoid_cls=False, sigmoid_kpt=True):
     """outputs: name -> float array (H, W, C). Returns (boxes xyxy, scores, kpts (N,17,3)) in letterbox pixels."""
     by_hw = {}
     for name, a in outputs.items():
