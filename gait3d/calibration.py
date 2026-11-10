@@ -43,6 +43,18 @@ def object_points(cols, rows, square_mm):
     return objp
 
 
+def _view_ok(o, im, size):
+    flags = MONO_FLAGS
+    for n in ("CALIB_FIX_K1", "CALIB_FIX_K2", "CALIB_FIX_K3", "CALIB_FIX_K4"):
+        flags |= _flag(n)
+    try:
+        cv2.fisheye.calibrate([o], [im], size, np.zeros((3, 3)), np.zeros((4, 1)), flags=flags,
+                              criteria=(cv2.TERM_CRITERIA_MAX_ITER + cv2.TERM_CRITERIA_EPS, 5, 1e-3))
+        return True
+    except cv2.error:
+        return False
+
+
 def _mono(obj, img, size, label, max_view_px=2.0):
     """fisheye.calibrate with automatic removal of ill-conditioned AND outlier views.
 
@@ -63,11 +75,16 @@ def _mono(obj, img, size, label, max_view_px=2.0):
                 break
             except cv2.error as e:
                 m = re.search(r"input array (\d+)", str(e))
-                if not m:
-                    raise
-                bad = keep[int(m.group(1))]
-                print(f"[{label}] dropping ill-conditioned view {bad}")
-                keep.remove(bad)
+                if m:
+                    bad = [keep[int(m.group(1))]]
+                else:
+                    # v2.6.1: e.g. "fabs(norm_u1) > 0 in InitExtrinsics" names no view.
+                    # Test each view on its own; the degenerate ones fail the same way.
+                    bad = [i for i in keep if not _view_ok(obj[i], img[i], size)]
+                    if not bad:
+                        raise
+                print(f"[{label}] dropping ill-conditioned view(s) {bad}")
+                keep = [i for i in keep if i not in bad]
         errs = []
         for i, r, t in zip(keep, rv, tv):
             p, _ = cv2.fisheye.projectPoints(obj[i].reshape(-1, 1, 3), r, t, K, D)
