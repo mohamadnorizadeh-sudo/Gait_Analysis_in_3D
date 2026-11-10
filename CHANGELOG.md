@@ -54,3 +54,17 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 | 17 | `calib_data` photos are 640×480 unrotated, but the running writer delivers 640×360 portrait frames from a different sensor mode | A calibration is only valid for the exact capture format | Recalibrate from the source you will track with (`01_capture_calibration.py --source shm --headless`) |
 
 All 19 tests pass on the Pi (7.2 s).
+
+---
+
+## v2.2 – v2.5 — live calibration and leg tests on the walker (2026-11-10)
+
+| Version | Found live | Fix |
+|---|---|---|
+| 2.2.0 | Cameras are **~0.83 m apart and turned ~97° toward each other**. `fisheye.stereoRectify` degenerated (rectified f = 0.0006 px); shared-view pairs covered only 15 % of each image | `RawStereoGeometry`: no rectification, YOLO on raw images, undistorted keypoints triangulated with R,T; match test = distance between viewing rays. Intrinsics from **single-camera views** (`scripts/cap_mono.py`) + pairs, stereo with `FIX_INTRINSIC`; 3D validation in the report |
+| 2.2.1 | Right camera RMS 8.5 px (one bad detection) | Per-view outlier removal → RMS 0.66 / 0.68 px, stereo 0.81 px, baseline 827.6 mm (ruler ≈ 850), reconstructed squares 25.13 mm, rays meet within 0.35 mm |
+| 2.3.0 | cam0 sees the **hips with confidence 0.24–0.32** (cam1: 0.59–0.75); knee/ankle ray gaps 4–68 mm → no 3D lock | A joint needs ≥ 0.5 in **at least one** camera; a joint seen only by cam1 uses cam1's ray and the bone length (cam0's guess only picks the right root). Match gate 80 mm |
+| 2.4.0 | AI HAT+ 2 is a **Hailo-10H** with YOLOv8s/m-pose HEFs pre-installed | `HailoPoseEstimator` (`--model *.hef`); class output is already a probability on-chip. Keypoints agree with the CPU model; person scores and speed still being tuned |
+| 2.5.0 | While one leg twists behind the other, **YOLO gives its shin the other leg's label** (15 jumps > 150 mm in 949 frames, flexion spikes to 143°) | `LegIdentity`: per-joint L/R continuity against the previous frame, duplicated joints kept only by the leg that owned them, single legs relabelled; knee motion gate (> 300 mm per frame rejected) |
+
+Thigh/shin tape lengths (trochanter → knee joint line → lateral malleolus): 42 / 41 cm. Direct stereo knee–ankle distance: 47–49 cm (keypoint placement differs between the two very different views; the bone constraint uses the tape values).

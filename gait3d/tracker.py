@@ -16,6 +16,7 @@ import cv2
 import numpy as np
 
 from .filters import OneEuroFilter
+from .identity import LegIdentity
 from .pose import (LegObs, best_person, legs_from_people, match_right,
                    people_from_result, suppress_ghost_legs)
 from .profile import BoneLengthCalibrator, SubjectProfile
@@ -57,6 +58,7 @@ class GaitTracker:
         self.calibrator = None if profile else BoneLengthCalibrator(calib_seconds)
         self.solvers: Dict[str, RigidLegSolver] = {}
         self.filters = {s: OneEuroFilter(cfg.filter_min_cutoff, cfg.filter_beta) for s in "LR"}
+        self.identity = LegIdentity()
         if profile:
             self._make_solvers()
 
@@ -111,6 +113,7 @@ class GaitTracker:
             d_lo, d_hi = -1e9, 1e9
         legs = legs_from_people(left, right, self.cfg.kp_conf, tol, (d_lo, d_hi), merr)
         legs = suppress_ghost_legs(legs, self.cfg.ghost_ratio)
+        legs = self.identity.fix(legs, t)          # v2.5: L/R continuity across frames
         out.obs = legs
 
         # ---------------- bone-length calibration phase ----------------
@@ -157,7 +160,17 @@ class GaitTracker:
                 out.legs.pop(drop)
                 out.obs.pop(drop, None)
 
-        for side, res in out.legs.items():
+        for side, res in list(out.legs.items()):
+            # v2.5 motion gate: a knee cannot teleport (> 300 mm between frames 0.2 s apart)
+            prev = getattr(self, "_last_knee", {}).get(side)
+            if prev is not None and t - prev[0] < 0.5 and np.linalg.norm(res.knee - prev[1]) > 300.0:
+                out.legs.pop(side)
+                out.proj.pop(side, None)
+                self.solvers[side].reset()
+                continue
+            self.__dict__.setdefault("_last_knee", {})[side] = (t, res.knee.copy())
+            if side in out.proj:
+                self.identity.update(side, t, out.proj[side])
             out.angle_filtered[side] = self.filters[side](res.angle_deg, t)
         for side in "LR":
             if side not in out.legs:
