@@ -43,24 +43,43 @@ def object_points(cols, rows, square_mm):
     return objp
 
 
-def _mono(obj, img, size, label):
-    """fisheye.calibrate with automatic removal of ill-conditioned views."""
+def _mono(obj, img, size, label, max_view_px=2.0):
+    """fisheye.calibrate with automatic removal of ill-conditioned AND outlier views.
+
+    v2.2: one bad detection (e.g. a board whose corner order flipped) gave the
+    right camera RMS 8.5 px on the walker; views whose own reprojection error is
+    above max(max_view_px, 3x median) are now dropped and the camera re-solved.
+    """
     keep = list(range(len(obj)))
-    while len(keep) >= 6:
-        K, D = np.zeros((3, 3)), np.zeros((4, 1))
-        try:
-            rms, K, D, _, _ = cv2.fisheye.calibrate(
-                [obj[i] for i in keep], [img[i] for i in keep], size, K, D,
-                flags=MONO_FLAGS, criteria=SUBPIX)
+    for _round in range(4):
+        while True:
+            if len(keep) < 6:
+                raise RuntimeError(f"[{label}] fewer than 6 usable views - capture more calibration views")
+            K, D = np.zeros((3, 3)), np.zeros((4, 1))
+            try:
+                rms, K, D, rv, tv = cv2.fisheye.calibrate(
+                    [obj[i] for i in keep], [img[i] for i in keep], size, K, D,
+                    flags=MONO_FLAGS, criteria=SUBPIX)
+                break
+            except cv2.error as e:
+                m = re.search(r"input array (\d+)", str(e))
+                if not m:
+                    raise
+                bad = keep[int(m.group(1))]
+                print(f"[{label}] dropping ill-conditioned view {bad}")
+                keep.remove(bad)
+        errs = []
+        for i, r, t in zip(keep, rv, tv):
+            p, _ = cv2.fisheye.projectPoints(obj[i].reshape(-1, 1, 3), r, t, K, D)
+            errs.append(float(np.sqrt(np.mean(np.sum((p.reshape(-1, 2) - img[i].reshape(-1, 2)) ** 2, 1)))))
+        errs = np.array(errs)
+        lim = max(max_view_px, 3.0 * float(np.median(errs)))
+        bad = [keep[j] for j in np.where(errs > lim)[0]]
+        if not bad:
             return rms, K, D, keep
-        except cv2.error as e:
-            m = re.search(r"input array (\d+)", str(e))
-            if not m:
-                raise
-            bad = keep[int(m.group(1))]
-            print(f"[{label}] dropping ill-conditioned view {bad}")
-            keep.remove(bad)
-    raise RuntimeError(f"[{label}] fewer than 6 usable views - capture more calibration pairs")
+        print(f"[{label}] dropping {len(bad)} outlier view(s) {bad} (error > {lim:.2f} px)")
+        keep = [i for i in keep if i not in bad]
+    return rms, K, D, keep
 
 
 def stereo_calibrate(obj, img_l, img_r, size, balance=0.0, fov_scale=1.0,
