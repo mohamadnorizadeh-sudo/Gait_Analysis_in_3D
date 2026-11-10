@@ -82,8 +82,14 @@ if profile:
 tracker = GaitTracker(geo, profile, TrackerConfig(kp_conf=args.kp_conf))
 if args.model.endswith(".hef"):
     from gait3d.hailo_pose import HailoPoseEstimator          # AI HAT+ 2 (Hailo-10H), v2.4
-    pose = HailoPoseEstimator(args.model)
-    print(f"[pose] Hailo {args.model}")
+    try:
+        pose = HailoPoseEstimator(args.model)
+        print(f"[pose] Hailo {args.model}")
+    except Exception as e:                                     # v2.8.1: keep working without the HAT
+        fb = os.path.expanduser("~/yolov8n-pose.pt")
+        print(f"[pose] WARNING: AI HAT+ 2 not available ({type(e).__name__}); "
+              f"falling back to CPU {fb} - lower accuracy. Reboot the Pi to reset the Hailo driver.")
+        pose = PoseEstimator(fb, 320)
 else:
     pose = PoseEstimator(args.model, args.imgsz)
 sgbm = None
