@@ -30,7 +30,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from gait3d.camera import open_source  # noqa: E402
 from gait3d.pose import PoseEstimator  # noqa: E402
 from gait3d.profile import SubjectProfile, load_or_none  # noqa: E402
-from gait3d.stereo_geometry import StereoGeometry, make_sgbm  # noqa: E402
+from gait3d.stereo_geometry import load_geometry, make_sgbm  # noqa: E402
 from gait3d.tracker import CsvLogger, GaitTracker, TrackerConfig, draw  # noqa: E402
 
 ap = argparse.ArgumentParser()
@@ -54,9 +54,17 @@ ap.add_argument("--source", choices=["picamera", "shm"], default="picamera",
 ap.add_argument("--swap", action="store_true", help="shm source: use cam1 as the LEFT camera")
 args = ap.parse_args()
 
-geo = StereoGeometry.load(args.calib)
-(ml, mr) = geo.rectify_maps()
-print(f"[stereo] f={geo.f:.1f}px  B={geo.baseline_mm:.1f}mm")
+geo = load_geometry(args.calib)
+RECT = getattr(geo, "rectified", True)
+if RECT:
+    (ml, mr) = geo.rectify_maps()
+    print(f"[stereo] rectified  f={geo.f:.1f}px  B={geo.baseline_mm:.1f}mm")
+else:
+    # v2.2: converging rig -> YOLO on raw images, keypoints undistorted + triangulated directly
+    print(f"[stereo] raw (no rectification)  B={geo.baseline_mm:.1f}mm  convergence={geo.convergence_deg:.1f}deg")
+    if args.sgbm:
+        print("[sgbm] disabled: dense matching needs a rectified pair")
+        args.sgbm = False
 
 if args.thigh_mm and args.shin_mm:
     profile = SubjectProfile.manual(args.thigh_mm, args.shin_mm)
@@ -82,8 +90,11 @@ try:
     with open_source(args.source, lens_position=args.lens, swap=args.swap) as cam:
         while True:
             t, L, R, skew = cam.read()
-            rl = cv2.remap(L, *ml, cv2.INTER_LINEAR)
-            rr = cv2.remap(R, *mr, cv2.INTER_LINEAR)
+            if RECT:
+                rl = cv2.remap(L, *ml, cv2.INTER_LINEAR)
+                rr = cv2.remap(R, *mr, cv2.INTER_LINEAR)
+            else:
+                rl, rr = L, R
             res_l, res_r = pose([rl, rr])                      # one batched inference
             sg = None
             if sgbm is not None:

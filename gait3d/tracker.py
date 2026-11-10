@@ -29,7 +29,8 @@ SRC_COLORS = {"measured": (0, 220, 0), "constrained": (0, 165, 255), "prior": (0
 @dataclass
 class TrackerConfig:
     kp_conf: float = 0.50             # per-joint confidence gate (requirement 4)
-    epi_tol_px: float = 4.0           # max |y_left - y_right| for a stereo keypoint match
+    epi_tol_px: float = 4.0           # rectified rig: max |y_left - y_right| (px)
+    ray_gap_mm: float = 40.0          # converging rig (v2.2): max distance between viewing rays
     z_range_mm: tuple = (120.0, 2000.0)
     ghost_ratio: float = 0.35
     ghost_3d_mm: float = 60.0
@@ -74,7 +75,8 @@ class GaitTracker:
             x, y = obs.xy[j]
             P = None
             if np.isfinite(obs.xr[j]):
-                P = self.geo.triangulate(x, y, obs.xr[j])
+                yr = obs.yr[j] if obs.yr is not None else None
+                P = self.geo.triangulate(x, y, obs.xr[j], yr)
             if (P is None or not np.isfinite(P[2])) and sgbm is not None:
                 pts3d, disp, d_max = sgbm
                 P = sample_sgbm_point(pts3d, disp, x, y, d_max, z_range=self.cfg.z_range_mm)
@@ -91,11 +93,17 @@ class GaitTracker:
         if left is None:
             out.status = "no person"
             return out
-        right = match_right(left, people_from_result(result_r), self.cfg.kp_conf, self.cfg.epi_tol_px) \
-            if result_r is not None else None
-        d_lo = float(self.geo.disparity_from_depth(self.cfg.z_range_mm[1]))
-        d_hi = float(self.geo.disparity_from_depth(self.cfg.z_range_mm[0]))
-        legs = legs_from_people(left, right, self.cfg.kp_conf, self.cfg.epi_tol_px, (d_lo, d_hi))
+        rect = getattr(self.geo, "rectified", True)
+        tol = self.cfg.epi_tol_px if rect else self.cfg.ray_gap_mm
+        merr = None if rect else self.geo.match_error
+        right = match_right(left, people_from_result(result_r), self.cfg.kp_conf, tol,
+                            None if rect else merr) if result_r is not None else None
+        if rect:
+            d_lo = float(self.geo.disparity_from_depth(self.cfg.z_range_mm[1]))
+            d_hi = float(self.geo.disparity_from_depth(self.cfg.z_range_mm[0]))
+        else:
+            d_lo, d_hi = -1e9, 1e9
+        legs = legs_from_people(left, right, self.cfg.kp_conf, tol, (d_lo, d_hi), merr)
         legs = suppress_ghost_legs(legs, self.cfg.ghost_ratio)
         out.obs = legs
 

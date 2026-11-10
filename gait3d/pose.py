@@ -38,6 +38,7 @@ class LegObs:
     xy: np.ndarray                 # (3, 2) left rectified pixels: hip, knee, ankle
     conf: np.ndarray               # (3,)
     xr: np.ndarray                 # (3,) right-image x (nan if not matched)
+    yr: np.ndarray = None          # (3,) right-image y (needed for non-rectified rigs)
 
     @property
     def mean_conf(self) -> float:
@@ -64,27 +65,31 @@ def best_person(people: List[Person]) -> Optional[Person]:
     return max(people, key=lambda p: float(np.mean(p.conf[legs])) * p.score)
 
 
-def match_right(left: Person, rights: List[Person], thr: float, epi_tol_px: float) -> Optional[Person]:
-    """Pick the right-image person whose leg joints sit on the same rectified rows."""
+def match_right(left: Person, rights: List[Person], thr: float, epi_tol: float,
+                match_error=None) -> Optional[Person]:
+    """Pick the right-image person whose leg joints are geometrically consistent.
+
+    match_error(xl, yl, xr, yr): rectified rigs -> |y_l - y_r| (px);
+    converging rigs (v2.2) -> closest distance between the viewing rays (mm).
+    """
     legs = [11, 12, 13, 14, 15, 16]
+    if match_error is None:
+        match_error = lambda xl, yl, xr, yr: abs(yl - yr)
     best, best_err = None, np.inf
     for p in rights:
         ok = (left.conf[legs] >= thr) & (p.conf[legs] >= thr)
         if ok.sum() < 2:
             continue
         idx = np.array(legs)[ok]
-        dy = np.abs(left.xy[idx, 1] - p.xy[idx, 1])
-        disp = left.xy[idx, 0] - p.xy[idx, 0]
-        if np.median(disp) <= 0:
-            continue
-        err = float(np.median(dy))
+        err = float(np.median([match_error(*left.xy[k], *p.xy[k]) for k in idx]))
         if err < best_err:
             best, best_err = p, err
-    return best if best_err <= 3 * epi_tol_px else None
+    return best if best_err <= 3 * epi_tol else None
 
 
 def legs_from_people(left: Person, right: Optional[Person], thr: float = 0.5,
-                     epi_tol_px: float = 4.0, d_range=(1.0, 400.0)) -> Dict[str, LegObs]:
+                     epi_tol_px: float = 4.0, d_range=(1.0, 400.0),
+                     match_error=None) -> Dict[str, LegObs]:
     """Return only legs whose hip, knee and ankle ALL pass the confidence gate."""
     legs = {}
     for side, idx in LEG_IDX.items():
@@ -92,16 +97,20 @@ def legs_from_people(left: Person, right: Optional[Person], thr: float = 0.5,
         c = left.conf[idx]
         if np.any(c < thr):
             continue                       # occluded -> leg disappears entirely
-        xr = np.full(3, np.nan)
+        xr, yr = np.full(3, np.nan), np.full(3, np.nan)
         if right is not None:
             for j, k in enumerate(idx):
                 if right.conf[k] < thr:
                     continue
-                dy = abs(left.xy[k, 1] - right.xy[k, 1])
-                d = left.xy[k, 0] - right.xy[k, 0]
-                if dy <= epi_tol_px and d_range[0] <= d <= d_range[1]:
-                    xr[j] = right.xy[k, 0]
-        legs[side] = LegObs(side, left.xy[idx].astype(float), c.astype(float), xr)
+                if match_error is None:          # rectified rig: same row + disparity range
+                    dy = abs(left.xy[k, 1] - right.xy[k, 1])
+                    d = left.xy[k, 0] - right.xy[k, 0]
+                    good = dy <= epi_tol_px and d_range[0] <= d <= d_range[1]
+                else:                            # converging rig: viewing rays must (nearly) meet
+                    good = match_error(*left.xy[k], *right.xy[k]) <= epi_tol_px
+                if good:
+                    xr[j], yr[j] = right.xy[k]
+        legs[side] = LegObs(side, left.xy[idx].astype(float), c.astype(float), xr, yr)
     return legs
 
 
