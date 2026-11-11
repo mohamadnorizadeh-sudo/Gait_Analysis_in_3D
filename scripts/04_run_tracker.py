@@ -118,6 +118,14 @@ if web:
 writer = None
 fps, t_prev, t0 = 0.0, None, time.monotonic()
 saved_profile = profile
+# v2.8.2: explicit stop flag. With the Qt window + HailoRT threads, a plain
+# KeyboardInterrupt was sometimes swallowed and the process never exited.
+import signal  # noqa: E402
+STOP = {"flag": False}
+def _stop(signum, frame):
+    STOP["flag"] = True
+signal.signal(signal.SIGINT, _stop)
+signal.signal(signal.SIGTERM, _stop)
 try:
     with open_source(args.source, lens_position=args.lens, swap=args.swap, rot=(args.rot_left, args.rot_right)) as cam:
         while True:
@@ -172,6 +180,9 @@ try:
                     print(f"\n[profile] {out.status} -> saved {args.profile_out}")
             if args.seconds and now - t0 > args.seconds:
                 break
+            if STOP["flag"]:
+                print("\n[stop] signal received - closing")
+                break
 finally:
     log.close()
     if rec:
@@ -179,4 +190,15 @@ finally:
     if writer:
         writer.release()
     cv2.destroyAllWindows()
-    print(f"\nangles logged to {args.csv}")
+    try:
+        if hasattr(pose, "close"):
+            pose.close()                       # release the AI HAT for the next run
+    except Exception as e:  # noqa: BLE001
+        print(f"[stop] pose close: {e}")
+    print(f"\nangles logged to {args.csv}", flush=True)
+    _exc = sys.exc_info()[0]
+    if _exc is not None and _exc is not KeyboardInterrupt:
+        import traceback
+        traceback.print_exc()
+    sys.stdout.flush(); sys.stderr.flush()
+    os._exit(1 if _exc not in (None, KeyboardInterrupt) else 0)                                # do not wait on lingering library threads

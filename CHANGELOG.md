@@ -11,7 +11,12 @@ and "restart" created no new session. The tracker had stopped responding after a
 (`throttled=0x50000`) and ignored the stop signal, so the restart found it still running and gave up.
 **Checked:** `scripts/orientation_check.py` (new) confirms rotation 180/180 is right (leg conf 0.97 vs 0.71-0.75).
 **Fix:** `stop_session.sh` escalates INT -> TERM -> KILL and waits for exit; `start_session.sh` waits up to 10 s
-for a previous session to finish before starting.
+for a previous session to finish before starting. `04_run_tracker.py` now handles SIGINT/SIGTERM with a stop
+flag, closes the AI HAT and always exits (session of 05:48 still needed a force-stop).
+
+**Protocol test 05:48 (rotation 180/180, Hailo m):** standing L 3-5 deg / R 15-17 deg (spread 2-6);
+left hold 47-60 deg (spread 2-7); right hold 44-48 deg (spread 1-8, best 1 deg). Twisting and walking
+still noisy (spread 15-50 deg, 27 probable L/R swaps) -> next work item.
 
 ## v2.0.0 — rigid, rotation-invariant 3D tracker (2026-11-09)
 
