@@ -138,12 +138,22 @@ class RigidLegSolver:
     # AWAY from the cameras (behind the straight-leg line).  cam_mid = midpoint of the
     # two camera centres (left-camera frame); None disables the rule.
     cam_mid: Optional[np.ndarray] = None
+    # v2.11: no joint can be closer than this to the camera (left-camera Z).  Live,
+    # with knee Z ~540 mm and shin 541 mm, the second ray-sphere root sat at Z ~0-30 mm
+    # (ankle "on the lens") and produced 85-112 deg flexion spikes while walking.
+    min_depth_mm: float = 0.0          # 0 = off; the tracker sets it (TrackerConfig.min_joint_depth_mm)
     anat_margin_mm: float = 60.0
     _prev: Optional[Dict[str, float]] = field(default=None, init=False, repr=False)
     _prev_age: int = field(default=0, init=False, repr=False)
 
     def reset(self):
         self._prev, self._prev_age = None, 0
+
+    def _t_floor(self, O, R):
+        """Smallest ray parameter whose point has Z >= min_depth_mm (10 if not applicable)."""
+        if self.min_depth_mm > 0 and R[2] > 1e-9:
+            return max(10.0, (self.min_depth_mm - O[2]) / R[2])
+        return 10.0
 
     # .................................................................. #
     def _sigma(self, z):
@@ -250,6 +260,7 @@ class RigidLegSolver:
             g = J.T @ r0
             step = -np.linalg.solve(A + lam * np.diag(np.diag(A) + 1e-9), g)
             z_new = np.maximum(z + step, 10.0)
+            z_new = np.array([max(z_new[i], self._t_floor(O[i], R[i])) for i in range(3)])
             if np.sum(residuals(z_new, w) ** 2) < np.sum(r0 ** 2):
                 z, lam = z_new, lam * 0.3
                 if np.max(np.abs(step)) < 0.05:
@@ -275,6 +286,9 @@ class RigidLegSolver:
                     break
         def pick(i, roots, target):
             n = names[i]
+            ok = [r for r in roots if (O[i] + r * R[i])[2] >= self.min_depth_mm] if self.min_depth_mm > 0 else roots
+            if len(ok):
+                roots = ok
             if n in hints and not left_ray[i] and len(roots) > 1:
                 h = np.asarray(hints[n], float)
                 h = h / np.linalg.norm(h)
@@ -307,6 +321,10 @@ class RigidLegSolver:
             else:
                 src[n] = "constrained"     # measured depth rejected as outlier
 
+        if self.min_depth_mm > 0 and min(H[2], K[2], A[2]) < self.min_depth_mm:
+            # v2.11 only a physically impossible solution exists -> no leg this frame
+            self._prev_age += 1
+            return None
         resid = max(abs(np.linalg.norm(H - K) - self.L_thigh), abs(np.linalg.norm(A - K) - self.L_shin))
         ang = joint_angle_deg(H, K, A)
         if ang is None:

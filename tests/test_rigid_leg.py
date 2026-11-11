@@ -210,3 +210,14 @@ def test_prior_alone_does_not_keep_a_leg_alive():
     s = RigidLegSolver(L_THIGH, L_SHIN)
     assert run_solver(geo, leg_pose(140, np.eye(3)), rng, solver=s) is not None
     assert run_solver(geo, leg_pose(140, np.eye(3)), rng, solver=s, drop=("hip", "knee", "ankle")) is None
+
+
+def test_ankle_on_lens_root_rejected():
+    """v2.11: knee 540 mm away, shin 541 mm -> the second ankle root sits at the lens (Z~0).
+    With min_depth_mm the solver must never return that root."""
+    sol = RigidLegSolver(419.0, 541.0)
+    sol.min_depth_mm = 200.0
+    H, K, A = np.array([0., -380., 560.]), np.array([0., 0., 540.]), np.array([0., 530., 650.])
+    rays = {n: P / P[2] for n, P in (("hip", H), ("knee", K), ("ankle", A))}
+    res = sol.solve(rays, {"hip": 560.0, "knee": 540.0, "ankle": None})
+    assert res is None or res.ankle[2] >= 200.0
