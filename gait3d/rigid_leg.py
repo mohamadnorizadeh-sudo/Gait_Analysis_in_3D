@@ -134,6 +134,11 @@ class RigidLegSolver:
     prior_sigma_mm: float = 60.0        # temporal prior on depth (gait moves < ~60 mm per frame at 30 fps)
     huber_k: float = 2.0                # outlier rejection for measured depths
     max_prior_age: int = 15             # frames a prior stays usable
+    # v2.11 anatomy: the subject faces the cameras, so a bending knee moves the ankle
+    # AWAY from the cameras (behind the straight-leg line).  cam_mid = midpoint of the
+    # two camera centres (left-camera frame); None disables the rule.
+    cam_mid: Optional[np.ndarray] = None
+    anat_margin_mm: float = 60.0
     _prev: Optional[Dict[str, float]] = field(default=None, init=False, repr=False)
     _prev_age: int = field(default=0, init=False, repr=False)
 
@@ -279,6 +284,18 @@ class RigidLegSolver:
 
         z_h = pick(0, roots_h, z[0])
         z_a = pick(2, roots_a, z[2])
+        if self.cam_mid is not None and len(roots_a) > 1:
+            # v2.11: drop an ankle root that would bend the knee FORWARD (towards the cameras)
+            H = O[0] + z_h * R[0]
+            th = (K - H) / max(1e-6, np.linalg.norm(K - H))
+            E = K + th * self.L_shin                       # straight-leg ankle position
+            ant = np.asarray(self.cam_mid, float) - K
+            ant = ant / max(1e-6, np.linalg.norm(ant))
+            ok = [float(r) for r in roots_a if (O[2] + r * R[2] - E) @ ant <= self.anat_margin_mm]
+            if len(ok) == 1:
+                z_a = ok[0]
+            elif len(ok) == 2:
+                z_a = float(min(ok, key=lambda r: abs(r - z_a)))
         H, A = O[0] + z_h * R[0], O[2] + z_a * R[2]
 
         src = {}

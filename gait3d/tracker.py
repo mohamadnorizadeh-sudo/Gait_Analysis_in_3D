@@ -32,6 +32,7 @@ class TrackerConfig:
     kp_conf: float = 0.50             # per-joint confidence gate (requirement 4)
     epi_tol_px: float = 4.0           # rectified rig: max |y_left - y_right| (px)
     ray_gap_mm: float = 80.0
+    anatomy: int = 0                  # v2.11: 1 = reject ankle roots that bend the knee forward
     max_rate_dps: float = 0.0   # 0 = off (v2.10 WIP, see tests/test_rate_gate.py)
     relock_frames: int = 8            # ...unless that many consecutive frames agree (real big bend, ~0.7 s)          # converging rig: max distance between viewing rays
                                       # (v2.3: 40 -> 80 mm; live gaps were 4-68 mm at 97 deg convergence)
@@ -140,6 +141,9 @@ class GaitTracker:
     def _make_solvers(self):
         sig = lambda z: self.geo.depth_sigma(z, 1.5)
         self.solvers = {s: RigidLegSolver(*self.profile.lengths(s), depth_sigma_fn=sig) for s in "LR"}
+        if self.cfg.anatomy and hasattr(self.geo, "C_r"):       # v2.11 knee bends backwards only
+            for sv in self.solvers.values():
+                sv.cam_mid = np.asarray(self.geo.C_r, float).ravel() / 2.0
 
     def recalibrate(self, seconds=2.0):
         self.profile, self.solvers = None, {}
