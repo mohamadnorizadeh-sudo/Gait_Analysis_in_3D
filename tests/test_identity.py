@@ -1,0 +1,69 @@
+import numpy as np
+from gait3d.identity import LegIdentity
+from gait3d.pose import LegObs
+
+
+def obs(side, pts, conf=0.9):
+    pts = np.array(pts, float)
+    return LegObs(side, pts, np.full(3, conf), np.full(3, np.nan), np.full(3, np.nan), np.full(3, conf), pts.copy())
+
+
+def test_shin_label_swap_is_undone():
+    idn = LegIdentity()
+    idn.update("L", 0.0, [[100, 100], [100, 250], [100, 400]])
+    idn.update("R", 0.0, [[200, 100], [200, 250], [200, 400]])
+    # YOLO swapped the ankles while the leg twisted
+    legs = {"L": obs("L", [[102, 100], [101, 252], [198, 402]]), "R": obs("R", [[201, 101], [199, 249], [101, 398]])}
+    out = idn.fix(legs, 0.2)
+    assert np.allclose(out["L"].xy[2], [101, 398]) and np.allclose(out["R"].xy[2], [198, 402])
+
+
+def test_duplicate_ankle_drops_other_leg():
+    idn = LegIdentity()
+    idn.update("L", 0.0, [[100, 100], [100, 250], [100, 400]])
+    idn.update("R", 0.0, [[200, 100], [200, 250], [200, 400]])
+    legs = {"L": obs("L", [[100, 100], [100, 250], [101, 401]]), "R": obs("R", [[200, 100], [190, 260], [105, 398]])}
+    out = idn.fix(legs, 0.2)
+    assert set(out) == {"L"}
+
+
+def test_single_leg_relabelled():
+    idn = LegIdentity()
+    idn.update("L", 0.0, [[100, 100], [100, 250], [100, 400]])
+    idn.update("R", 0.0, [[200, 100], [200, 250], [200, 400]])
+    out = idn.fix({"L": obs("L", [[199, 99], [201, 251], [200, 399]])}, 0.2)
+    assert set(out) == {"R"}
+
+
+def test_neutral_offset():
+    from gait3d.tracker import NeutralOffset
+    n = NeutralOffset(seconds=1.0)
+    t, done = 0.0, False
+    while not done:
+        done = n.add(t, {"L": 15.0 + 0.5 * np.sin(t * 9), "R": 18.0})
+        t += 0.1
+        assert t < 5
+    assert abs(n.offset["L"] - 15.0) < 0.6 and n.offset["R"] == 18.0
+
+
+def test_neutral_only_in_first_window():
+    """v2.13: a still, bent stance AFTER the first 10 s must not become the 0 deg reference."""
+    from gait3d.tracker import NeutralOffset
+    n = NeutralOffset(seconds=3.0, window_s=10.0)
+    t = 0.0
+    while t < 12.0:                         # walking: too much spread, no reference
+        n.add(t, {"L": 30.0 * (int(t * 4) % 2), "R": 25.0 * (int(t * 4 + 1) % 2)})
+        t += 0.1
+    assert n.failed and n.offset == {"L": 0.0, "R": 0.0}
+    for k in range(60):                     # tired patient standing still with 20 deg bent knees
+        n.add(12.0 + k * 0.1, {"L": 20.0, "R": 20.0})
+    assert n.offset == {"L": 0.0, "R": 0.0}
+
+
+def test_neutral_taken_inside_window():
+    from gait3d.tracker import NeutralOffset
+    n = NeutralOffset(seconds=3.0, window_s=10.0)
+    ok = False
+    for k in range(50):
+        ok = n.add(k * 0.1, {"L": 12.0, "R": 15.0}) or ok
+    assert ok and not n.failed and abs(n.offset["L"] - 12.0) < 1e-6

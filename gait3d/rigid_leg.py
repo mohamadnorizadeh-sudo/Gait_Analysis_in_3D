@@ -1,0 +1,335 @@
+"""Rigid-link 3D leg solver: bone lengths are physical constants.
+
+Why the v1 hand-off formula is not enough
+-----------------------------------------
+The proposed correction ``H_fixed = K + L_thigh * u/|u|`` with ``u = H_raw - K``
+keeps the *direction* of u and only changes its *length*.  The knee angle
+
+    theta = arccos( (H-K).(A-K) / (|H-K| |A-K|) )
+
+does not depend on vector lengths, so that correction leaves theta
+**exactly unchanged** (see tests/test_rigid_leg.py::test_naive_rescale_does_not_change_angle).
+If the measured depth of H is wrong, its direction from K is wrong, and the
+angle stays wrong.
+
+What v2 does instead (still closed-form at its core)
+---------------------------------------------------
+The 2D pixel of a joint is reliable; its depth is not.  So each joint is
+constrained to lie on its camera ray ``P(Z) = Z * r`` (r = pixel ray, r_z = 1)
+and the *depth* along that ray is what we solve for:
+
+1. Ray-sphere intersection (closed form).  With K known, the hip must satisfy
+   |Z r_H - K| = L_thigh, i.e.
+
+       (r.r) Z^2 - 2 (r.K) Z + (K.K - L^2) = 0
+
+   which gives two roots (front/back of the sphere); we take the root closest
+   to the measured depth or, if that joint's depth is missing, to the previous
+   frame.  The same is done for the ankle with L_shin.  This *does* rotate the
+   bone to the right direction, so the angle becomes rotation-invariant, and it
+   fills in missing Z without ever falling back to 2D.
+
+2. Choosing the knee depth.  The knee anchors both spheres, so its depth is
+   chosen by a tiny 3-variable robust least-squares problem over (Z_H, Z_K, Z_A):
+
+       bone terms        (|P_H-P_K| - L_thigh)/s_L , (|P_A-P_K| - L_shin)/s_L
+       measurement terms (Z_j - Z_j_meas)/sigma_Z(j)      (Huber-weighted, skipped if missing)
+       temporal terms    (Z_j - Z_j_prev)/s_prior          (weak, keeps the right root)
+
+   then step 1 is applied exactly so the final lengths equal L_thigh/L_shin to
+   floating-point precision.  Cost: ~10 Levenberg-Marquardt iterations on 3
+   unknowns -> microseconds on the Pi 5.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Dict, Optional
+
+import numpy as np
+
+JOINTS = ("hip", "knee", "ankle")
+
+
+# ---------------------------------------------------------------------- #
+# basic maths
+# ---------------------------------------------------------------------- #
+def joint_angle_deg(hip, knee, ankle) -> Optional[float]:
+    """Interior knee angle (180 = straight leg)."""
+    v1 = np.asarray(hip, float) - np.asarray(knee, float)
+    v2 = np.asarray(ankle, float) - np.asarray(knee, float)
+    n1, n2 = np.linalg.norm(v1), np.linalg.norm(v2)
+    if n1 < 1e-9 or n2 < 1e-9:
+        return None
+    c = float(np.dot(v1, v2) / (n1 * n2))
+    return float(np.degrees(np.arccos(np.clip(c, -1.0, 1.0))))
+
+
+def naive_rescale(parent, child_raw, length):
+    """The hand-off formula, kept for reference/tests: P = C + L * u/|u|."""
+    u = np.asarray(child_raw, float) - np.asarray(parent, float)
+    n = np.linalg.norm(u)
+    if n < 1e-9:
+        return np.asarray(child_raw, float)
+    return np.asarray(parent, float) + length * u / n
+
+
+def ray_sphere_depths(ray, center, radius):
+    """Depths Z where the point Z*ray is exactly `radius` from `center`.
+
+    Returns (roots, hit).  If the ray misses the sphere (2D keypoint and bone
+    length are inconsistent by a few mm) we return the depth of the closest
+    approach, hit=False -- the best physically consistent estimate.
+    """
+    r = np.asarray(ray, float)
+    c = np.asarray(center, float)
+    a = r @ r
+    b = -2.0 * (r @ c)
+    cc = c @ c - radius * radius
+    disc = b * b - 4 * a * cc
+    if disc < 0:
+        return np.array([-b / (2 * a)]), False
+    s = np.sqrt(disc)
+    return np.array([(-b - s) / (2 * a), (-b + s) / (2 * a)]), True
+
+
+def closest_root(roots, target):
+    roots = np.asarray(roots, float)
+    roots = roots[roots > 1.0] if np.any(roots > 1.0) else roots
+    return float(roots[np.argmin(np.abs(roots - target))])
+
+
+# ---------------------------------------------------------------------- #
+# solver
+# ---------------------------------------------------------------------- #
+@dataclass
+class LegResult:
+    hip: np.ndarray
+    knee: np.ndarray
+    ankle: np.ndarray
+    angle_deg: float               # interior angle, 180 = straight
+    source: Dict[str, str]         # per joint: "measured" | "constrained" | "prior"
+    residual_mm: float             # worst |bone length - L| after solve (should be ~0)
+
+    @property
+    def flexion_deg(self) -> float:
+        """Clinical knee flexion (0 = straight)."""
+        return 180.0 - self.angle_deg
+
+    @property
+    def thigh_mm(self) -> float:
+        return float(np.linalg.norm(self.hip - self.knee))
+
+    @property
+    def shin_mm(self) -> float:
+        return float(np.linalg.norm(self.ankle - self.knee))
+
+
+@dataclass
+class RigidLegSolver:
+    L_thigh: float
+    L_shin: float
+    depth_sigma_fn: callable = None     # z -> sigma_z (mm); default 2% of z
+    bone_sigma_mm: float = 5.0          # how "hard" the bone constraint is inside LM
+    prior_sigma_mm: float = 60.0        # temporal prior on depth (gait moves < ~60 mm per frame at 30 fps)
+    huber_k: float = 2.0                # outlier rejection for measured depths
+    max_prior_age: int = 15             # frames a prior stays usable
+    # v2.11 anatomy: the subject faces the cameras, so a bending knee moves the ankle
+    # AWAY from the cameras (behind the straight-leg line).  cam_mid = midpoint of the
+    # two camera centres (left-camera frame); None disables the rule.
+    cam_mid: Optional[np.ndarray] = None
+    # v2.11: no joint can be closer than this to the camera (left-camera Z).  Live,
+    # with knee Z ~540 mm and shin 541 mm, the second ray-sphere root sat at Z ~0-30 mm
+    # (ankle "on the lens") and produced 85-112 deg flexion spikes while walking.
+    min_depth_mm: float = 0.0          # 0 = off; the tracker sets it (TrackerConfig.min_joint_depth_mm)
+    anat_margin_mm: float = 60.0
+    _prev: Optional[Dict[str, float]] = field(default=None, init=False, repr=False)
+    _prev_age: int = field(default=0, init=False, repr=False)
+
+    def reset(self):
+        self._prev, self._prev_age = None, 0
+
+    def _t_floor(self, O, R):
+        """Smallest ray parameter whose point has Z >= min_depth_mm (10 if not applicable)."""
+        if self.min_depth_mm > 0 and R[2] > 1e-9:
+            return max(10.0, (self.min_depth_mm - O[2]) / R[2])
+        return 10.0
+
+    # .................................................................. #
+    def _sigma(self, z):
+        if self.depth_sigma_fn is not None:
+            return max(1.0, float(self.depth_sigma_fn(z)))
+        return max(1.0, 0.02 * float(z))
+
+    @staticmethod
+    def _split(ray):
+        """A ray is either a left-camera pixel ray r (origin 0, r_z = 1, so the
+        parameter t is the depth Z) or (origin, direction) for a joint that only
+        the OTHER camera sees (v2.3)."""
+        if isinstance(ray, tuple):
+            return np.asarray(ray[0], float), np.asarray(ray[1], float)
+        return np.zeros(3), np.asarray(ray, float)
+
+    def solve(self, rays: Dict[str, object], meas_z: Dict[str, Optional[float]],
+              hints: Optional[Dict[str, np.ndarray]] = None,
+              meas_scale: Optional[Dict[str, float]] = None) -> Optional[LegResult]:
+        """rays: joint -> left pixel ray (r_z = 1) or (origin, dir) from the other camera.
+        meas_z: joint -> measured depth (left-camera Z, only for left rays) or None.
+        hints: joint -> LOW-confidence left pixel ray.  Not trusted as a
+        measurement, only used to pick the correct one of the two ray-sphere
+        roots (front/back) for a joint that only the other camera sees."""
+        hints = hints or {}
+        meas_scale = meas_scale or {}
+        prevP = self._prev if (self._prev is not None and self._prev_age <= self.max_prior_age) else None
+        names = JOINTS
+        O, R = zip(*[self._split(rays[n]) for n in names])
+        left_ray = [not isinstance(rays[n], tuple) for n in names]
+        zm = [meas_z.get(n) if left_ray[i] else None for i, n in enumerate(names)]
+        zm = [None if (z is None or not np.isfinite(z) or z <= 0) else float(z) for z in zm]
+        # v2.7: measurement noise grows when the pose model is less sure (scale >= 1)
+        msc = [float(meas_scale.get(n, 1.0)) for n in names]
+
+        def sg(i):
+            return self._sigma(zm[i]) * msc[i]
+
+        def t_closest(i, P):
+            d = R[i]
+            return float(d @ (np.asarray(P) - O[i]) / (d @ d))
+
+        prev = None
+        if prevP is not None:
+            prev = [t_closest(i, prevP[n]) for i, n in enumerate(names)]
+
+        # ---- initial guess ------------------------------------------------
+        init = [None] * 3
+        for i in range(3):
+            if zm[i] is not None:
+                init[i] = zm[i]
+            elif prev is not None:
+                init[i] = prev[i]
+        anchors = [O[i] + init[i] * R[i] for i in range(3) if init[i] is not None]
+        for i, n in enumerate(names):
+            if init[i] is None and n in hints and not left_ray[i]:
+                # weak triangulation: closest approach between this ray and the hint ray
+                d1, d2, w0 = R[i], np.asarray(hints[n], float), O[i]
+                a, b, c = d1 @ d1, d1 @ d2, d2 @ d2
+                den = a * c - b * b
+                if abs(den) > 1e-9:
+                    init[i] = max(10.0, float((b * (d2 @ w0) - c * (d1 @ w0)) / den))
+        for i in range(3):
+            if init[i] is None and anchors:
+                # closest point on this ray to the mean of the known joints
+                init[i] = max(10.0, t_closest(i, np.mean(anchors, axis=0)))
+        if any(v is None for v in init) or all(v is None for v in zm):
+            # No 3D measurement this frame (or none at all): no 3D lock.
+            # v2.6: a prior alone is NOT enough -- live on the walker a prior-only
+            # solution kept re-feeding itself and froze a leg at 160 deg for 20 s.
+            # (We also deliberately do NOT fall back to a 2D pixel angle.)
+            self._prev_age += 1
+            return None
+        z = np.array(init, float)
+
+        # ---- robust Levenberg-Marquardt over the three ray parameters ------
+        def residuals(zv, w_meas):
+            P = [O[i] + zv[i] * R[i] for i in range(3)]
+            res = [
+                (np.linalg.norm(P[0] - P[1]) - self.L_thigh) / self.bone_sigma_mm,
+                (np.linalg.norm(P[2] - P[1]) - self.L_shin) / self.bone_sigma_mm,
+            ]
+            for i in range(3):
+                if zm[i] is not None:
+                    res.append(np.sqrt(w_meas[i]) * (zv[i] - zm[i]) / sg(i))
+                if prev is not None:
+                    res.append((zv[i] - prev[i]) / self.prior_sigma_mm)
+            return np.array(res)
+
+        w = np.ones(3)
+        lam = 1e-2
+        for _ in range(25):
+            for i in range(3):
+                if zm[i] is not None:
+                    e = abs(z[i] - zm[i]) / sg(i)
+                    w[i] = 1.0 if e <= self.huber_k else self.huber_k / e
+            r0 = residuals(z, w)
+            J = np.empty((r0.size, 3))
+            for k in range(3):
+                dz = np.zeros(3)
+                dz[k] = 0.5
+                J[:, k] = (residuals(z + dz, w) - r0) / 0.5
+            A = J.T @ J
+            g = J.T @ r0
+            step = -np.linalg.solve(A + lam * np.diag(np.diag(A) + 1e-9), g)
+            z_new = np.maximum(z + step, 10.0)
+            z_new = np.array([max(z_new[i], self._t_floor(O[i], R[i])) for i in range(3)])
+            if np.sum(residuals(z_new, w) ** 2) < np.sum(r0 ** 2):
+                z, lam = z_new, lam * 0.3
+                if np.max(np.abs(step)) < 0.05:
+                    break
+            else:
+                lam *= 10.0
+
+        # ---- exact closed-form projection onto the bone spheres -----------
+        def spheres(zk):
+            K = O[1] + zk * R[1]
+            rh, oh = ray_sphere_depths(R[0], K - O[0], self.L_thigh)
+            ra, oa = ray_sphere_depths(R[2], K - O[2], self.L_shin)
+            return K, rh, oh, ra, oa
+
+        K, roots_h, hit_h, roots_a, hit_a = spheres(z[1])
+        if not (hit_h and hit_a):
+            # Pixel noise put a ray just outside its bone sphere.  Slide the knee
+            # along its own ray to the nearest parameter where BOTH spheres are hit.
+            for dk in np.ravel(np.column_stack([np.arange(1, 81), -np.arange(1, 81)])):
+                Kc, rh, oh, ra, oa = spheres(z[1] + dk)
+                if oh and oa:
+                    z[1], K, roots_h, roots_a = z[1] + dk, Kc, rh, ra
+                    break
+        def pick(i, roots, target):
+            n = names[i]
+            ok = [r for r in roots if (O[i] + r * R[i])[2] >= self.min_depth_mm] if self.min_depth_mm > 0 else roots
+            if len(ok):
+                roots = ok
+            if n in hints and not left_ray[i] and len(roots) > 1:
+                h = np.asarray(hints[n], float)
+                h = h / np.linalg.norm(h)
+                dist = [np.linalg.norm(np.cross(O[i] + t * R[i], h)) for t in roots]
+                return float(roots[int(np.argmin(dist))])
+            return closest_root(roots, target)
+
+        z_h = pick(0, roots_h, z[0])
+        z_a = pick(2, roots_a, z[2])
+        if self.cam_mid is not None and len(roots_a) > 1:
+            # v2.11: drop an ankle root that would bend the knee FORWARD (towards the cameras)
+            H = O[0] + z_h * R[0]
+            th = (K - H) / max(1e-6, np.linalg.norm(K - H))
+            E = K + th * self.L_shin                       # straight-leg ankle position
+            ant = np.asarray(self.cam_mid, float) - K
+            ant = ant / max(1e-6, np.linalg.norm(ant))
+            ok = [float(r) for r in roots_a if (O[2] + r * R[2] - E) @ ant <= self.anat_margin_mm]
+            if len(ok) == 1:
+                z_a = ok[0]
+            elif len(ok) == 2:
+                z_a = float(min(ok, key=lambda r: abs(r - z_a)))
+        H, A = O[0] + z_h * R[0], O[2] + z_a * R[2]
+
+        src = {}
+        for i, n, zf in zip(range(3), names, (z_h, z[1], z_a)):
+            if zm[i] is None:
+                src[n] = "constrained" if any(v is not None for v in zm) else "prior"
+            elif abs(zf - zm[i]) <= 2.5 * sg(i):
+                src[n] = "measured"
+            else:
+                src[n] = "constrained"     # measured depth rejected as outlier
+
+        if self.min_depth_mm > 0 and min(H[2], K[2], A[2]) < self.min_depth_mm:
+            # v2.11 only a physically impossible solution exists -> no leg this frame
+            self._prev_age += 1
+            return None
+        resid = max(abs(np.linalg.norm(H - K) - self.L_thigh), abs(np.linalg.norm(A - K) - self.L_shin))
+        ang = joint_angle_deg(H, K, A)
+        if ang is None:
+            self._prev_age += 1
+            return None
+        self._prev = {"hip": H, "knee": K, "ankle": A}
+        self._prev_age = 0
+        return LegResult(H, K, A, ang, src, float(resid))
