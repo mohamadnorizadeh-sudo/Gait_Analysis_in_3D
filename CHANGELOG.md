@@ -5,6 +5,17 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v2.9 (2026-11-11) - camera-measured bone lengths
+**Issue:** with tape lengths (thigh 420 / shin 410 mm) the solver rejected most stereo measurements as
+outliers: only 10-45 % of joints were "measured", although keypoint confidence was 0.9-0.99 in both cameras.
+The rig measures the shin from YOLO's knee/ankle points as longer (L 541, R 446 mm; thighs 419/426 match the tape),
+so the two disagreed and the angle came from the bone-length guess. Holds read 52 / 39 deg vs ~40 on a phone goniometer.
+**Fix:** `config/subject_stereo.json` with the rig's own lengths, used by `start_session.sh` through `PROFILE=`
+in `config/session.env`. New tools: `diagnose_replay.py`, `probe_raygap.py`, `replay_lengths.py`.
+**Replay of session 05:48 (same keypoints):** holds L 41.2 / R 42.9 deg (phone ~40), standing -1.0 / 2.8,
+measured joints 45-61 %, spread during holds 3.8-5.2 deg, no jumps in holds.
+**Still open:** twisting and walking (spread 20-30 deg, 32 identity swaps while walking).
+
 ## v2.8.2 (2026-11-11)
 **Issue:** the session of 05:31 had almost no leg detections (knee conf 0.1-0.26, no person after 90 s)
 and "restart" created no new session. The tracker had stopped responding after a power dip
