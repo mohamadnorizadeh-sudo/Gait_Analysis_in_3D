@@ -5,6 +5,14 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v2.10 (WIP, off by default) - knee-speed gate
+**Idea:** hide flexion changes faster than 350 deg/s (walking spikes to 85-110 deg).
+**Try 1 (2e0931c):** spikes lasting >= 3 frames passed, because the allowed change grew with the time since the
+last accepted value. **Try 2 (5809274):** allowance capped at 0.15 s. Replay of session 05:48: holds unchanged,
+but walking got WORSE: after a gap the first (wrong) value was accepted and the correct values that followed were
+hidden (R leg 76-125 deg at t 199-201 s). **Decision:** gate stays off (`max_rate_dps = 0`); the live system is v2.9.
+Next: decide L/R and depth root from both cameras jointly instead of filtering the angle afterwards.
+
 ## v2.9 (2026-11-11) - camera-measured bone lengths
 **Issue:** with tape lengths (thigh 420 / shin 410 mm) the solver rejected most stereo measurements as
 outliers: only 10-45 % of joints were "measured", although keypoint confidence was 0.9-0.99 in both cameras.
