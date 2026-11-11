@@ -25,10 +25,15 @@ ap.add_argument('recording')
 ap.add_argument('--calib', default='stereo_calibration.npz')
 ap.add_argument('--thigh-mm', type=float, default=420)
 ap.add_argument('--shin-mm', type=float, default=410)
+ap.add_argument('--lengths', default='', help='Lthigh,Lshin,Rthigh,Rshin (mm)')
 ap.add_argument('--phases', default='stand:136-145,Lhold:148-160,Ltwist:161-169,Rhold:170-184,Rtwist:185-198,walk:199-226')
 a = ap.parse_args()
 phases = [(p.split(':')[0], *map(float, p.split(':')[1].split('-'))) for p in a.phases.split(',')]
-tr = GaitTracker(load_geometry(a.calib), SubjectProfile.manual(a.thigh_mm, a.shin_mm), TrackerConfig())
+prof = SubjectProfile.manual(a.thigh_mm, a.shin_mm)
+if a.lengths:
+    lt, ls, rt, rs = map(float, a.lengths.split(','))
+    prof = SubjectProfile(lt, ls, rt, rs, method='manual')
+tr = GaitTracker(load_geometry(a.calib), prof, TrackerConfig())
 KI = {'L': (13, 15), 'R': (14, 16)}
 rows, t0, sw0 = [], None, 0
 for t, pl, pr, _ in read_recording(a.recording):
