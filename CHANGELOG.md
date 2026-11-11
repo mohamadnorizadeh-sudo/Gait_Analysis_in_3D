@@ -5,6 +5,15 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v2.17 (2026-11-11) - learned fallback bias
+**Issue (live v2.16.1, session 12:17):** while the right leg was bent, the straight left leg flickered between
+~0 deg (both cameras saw it -> direct measurement) and 25-28 deg (partly hidden in the right camera -> fixed-length
+solver, which over-reads).
+**Fix:** on frames where all joints are triangulated the solver is also run and its excess flexion vs the direct
+measurement is learned per leg (EMA 0.05); on fallback frames that bias is removed (`fallback_bias`, 0 = off).
+**Replay of session 12:17:** straight left leg during the right hold 22 / 28 / 22 deg -> **8 / 13 / 8 deg**;
+right-leg jumps in the hold 10 -> 4; all other phases unchanged (standing -2..0 deg, left hold 36-42 deg).
+
 ## v2.16.1 (2026-11-11) - fixed solver lengths in the fallback
 **Issue (live v2.16 test, session 12:12):** the straight left leg read 17-19 deg while the right leg was bent.
 Replay A/B of that session (standing left leg during the right hold, 3 blocks): learning lengths always
