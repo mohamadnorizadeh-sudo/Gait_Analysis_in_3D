@@ -35,6 +35,7 @@ class TrackerConfig:
     # v2.16: when all three joints are triangulated, use them directly (the fixed-length
     # solver added 8-28 deg of false flexion in deep bends); solver only fills in hidden joints.
     stereo_first: int = 1
+    fallback_bias: float = 0.05       # v2.17: EMA rate learning (solver - stereo) flexion; subtracted on fallback frames
     adapt_lengths: float = 0.0        # (v2.16.1: off - learning lengths biased the straight leg) EMA rate that keeps the solver's lengths = recently measured ones
     adapt_max_flex: float = 20.0      # ...but only learn lengths while the leg is nearly straight (bent-knee
                                       # keypoints shorten the segments and then bias the fallback)
@@ -158,6 +159,9 @@ class GaitTracker:
         # v2.7: smooth the thigh and shin DIRECTIONS in 3D (6 One-Euro filters per leg)
         self.dir_filters = {s: [OneEuroFilter(cfg.dir_min_cutoff, cfg.dir_beta) for _ in range(6)] for s in "LR"}
         self.neutral = NeutralOffset(neutral_seconds) if neutral_seconds > 0 else None
+        self.fb_bias = {"L": 0.0, "R": 0.0}     # v2.17 learned solver bias (deg flexion)
+        self.fb_n = {"L": 0, "R": 0}
+        self._fallback = set()
         self.gates = {s: AngleRateGate(cfg.max_rate_dps, cfg.relock_frames) for s in "LR"} if cfg.max_rate_dps > 0 else {}
         if profile:
             self._make_solvers()
@@ -282,8 +286,25 @@ class GaitTracker:
                         sv.L_thigh = float(np.clip((1 - a) * sv.L_thigh + a * lt, 0.8 * L0t, 1.2 * L0t))
                         sv.L_shin = float(np.clip((1 - a) * sv.L_shin + a * ls, 0.8 * L0s, 1.2 * L0s))
                     sv._prev, sv._prev_age = {"hip": H.copy(), "knee": K.copy(), "ankle": A.copy()}, 0
+            if res is not None and self.cfg.fallback_bias > 0:
+                # v2.17: learn how much the fixed-length solver over-reads on this leg right now
+                prev_state = (sv._prev, sv._prev_age)
+                r_s = sv.solve(rays, zs, hints, mscale)
+                sv._prev, sv._prev_age = prev_state
+                if r_s is not None:
+                    d = (180.0 - r_s.angle_deg) - (180.0 - res.angle_deg)
+                    k = self.cfg.fallback_bias if self.fb_n[side] > 20 else 1.0 / (self.fb_n[side] + 1)
+                    self.fb_bias[side] = float(np.clip((1 - k) * self.fb_bias[side] + k * d, -10.0, 40.0))
+                    self.fb_n[side] += 1
+                sv._prev, sv._prev_age = {"hip": res.hip.copy(), "knee": res.knee.copy(), "ankle": res.ankle.copy()}, 0
             if res is None:
                 res = sv.solve(rays, zs, hints, mscale)
+                if res is not None and self.cfg.stereo_first:
+                    self._fallback.add(side)
+                else:
+                    self._fallback.discard(side)
+            else:
+                self._fallback.discard(side)
             if res is not None:
                 out.legs[side] = res
                 if hasattr(self.geo, "project_left"):
@@ -308,6 +329,8 @@ class GaitTracker:
             if side in out.proj:
                 self.identity.update(side, t, out.proj[side])
             a_f = self._smooth_angle(side, res, t)
+            if side in self._fallback and self.cfg.fallback_bias > 0 and self.fb_n[side] > 0:
+                a_f = min(180.0, a_f + self.fb_bias[side])     # remove the learned solver over-read
             if self.gates and not self.gates[side](t, 180.0 - a_f):         # v2.10 impossible jump -> hide this frame
                 out.legs.pop(side)
                 out.proj.pop(side, None)
