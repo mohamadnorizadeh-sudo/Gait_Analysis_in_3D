@@ -33,7 +33,7 @@ class TrackerConfig:
     epi_tol_px: float = 4.0           # rectified rig: max |y_left - y_right| (px)
     ray_gap_mm: float = 80.0
     max_rate_dps: float = 0.0   # 0 = off (v2.10 WIP, see tests/test_rate_gate.py)
-    relock_frames: int = 6            # ...unless that many consecutive frames agree (real big bend)          # converging rig: max distance between viewing rays
+    relock_frames: int = 8            # ...unless that many consecutive frames agree (real big bend, ~0.7 s)          # converging rig: max distance between viewing rays
                                       # (v2.3: 40 -> 80 mm; live gaps were 4-68 mm at 97 deg convergence)
     z_range_mm: tuple = (120.0, 2000.0)
     ghost_ratio: float = 0.35
@@ -95,9 +95,9 @@ class AngleRateGate:
     candidates agree within relock_tol they are accepted (a real fast bend).
     """
 
-    def __init__(self, max_rate=350.0, relock_frames=6, slack=12.0, max_gap_s=0.4, relock_tol=15.0):
+    def __init__(self, max_rate=350.0, relock_frames=8, slack=12.0, max_gap_s=1.0, relock_tol=15.0, max_dt=0.15):
         self.max_rate, self.relock_frames, self.slack = max_rate, int(relock_frames), slack
-        self.max_gap_s, self.relock_tol = max_gap_s, relock_tol
+        self.max_gap_s, self.relock_tol, self.max_dt = max_gap_s, relock_tol, max_dt
         self.last = None            # (t, flexion)
         self.pending = []
         self.rejected = 0
@@ -106,7 +106,7 @@ class AngleRateGate:
         if self.last is None or t - self.last[0] > self.max_gap_s:
             ok = True
         else:
-            dt = max(1e-3, t - self.last[0])
+            dt = min(self.max_dt, max(1e-3, t - self.last[0]))   # allowance never grows while hidden
             ok = abs(f - self.last[1]) <= self.max_rate * dt + self.slack
         if not ok:
             self.pending.append(f)

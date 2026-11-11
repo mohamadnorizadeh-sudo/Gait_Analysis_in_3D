@@ -3,9 +3,9 @@ import pytest
 from gait3d.tracker import AngleRateGate
 
 
-@pytest.mark.xfail(reason="v2.10 WIP: a spike lasting >= 3 frames passes because the allowance grows with time since the last accepted value", strict=True)
 def test_short_spike_hidden_real_bend_kept():
     g = AngleRateGate(max_rate=350, relock_frames=6)
+    # (allowance is capped at max_dt, so a spike never 'earns' its way in)
     dt = 0.09
     ok = [g(i * dt, 10.0) for i in range(5)]
     assert all(ok)
@@ -22,4 +22,12 @@ def test_short_spike_hidden_real_bend_kept():
 def test_after_gap_anything_accepted():
     g = AngleRateGate()
     assert g(0.0, 5.0)
-    assert g(1.0, 90.0)
+    assert g(1.5, 90.0)
+
+
+def test_eight_frame_spike_hidden():
+    g = AngleRateGate()
+    dt = 0.09
+    assert all(g(i * dt, 10.0) for i in range(5))
+    assert not any(g((5 + i) * dt, 110.0) for i in range(7))
+    assert g(12 * dt, 15.0)
