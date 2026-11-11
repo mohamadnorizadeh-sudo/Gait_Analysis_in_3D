@@ -29,6 +29,7 @@ ap.add_argument('--lengths', default='', help='Lthigh,Lshin,Rthigh,Rshin (mm)')
 ap.add_argument('--swap-ratio', type=float, default=None)
 ap.add_argument('--knee-gate', type=float, default=None)
 ap.add_argument('--dump', default='', help='lo-hi seconds: print L/R flexion every 0.25 s')
+ap.add_argument('--max-rate', type=float, default=None)
 ap.add_argument('--phases', default='stand:136-145,Lhold:148-160,Ltwist:161-169,Rhold:170-184,Rtwist:185-198,walk:199-226')
 a = ap.parse_args()
 phases = [(p.split(':')[0], *map(float, p.split(':')[1].split('-'))) for p in a.phases.split(',')]
@@ -36,7 +37,7 @@ prof = SubjectProfile.manual(a.thigh_mm, a.shin_mm)
 if a.lengths:
     lt, ls, rt, rs = map(float, a.lengths.split(','))
     prof = SubjectProfile(lt, ls, rt, rs, method='manual')
-tr = GaitTracker(load_geometry(a.calib), prof, TrackerConfig())
+tr = GaitTracker(load_geometry(a.calib), prof, TrackerConfig(**({'max_rate_dps': a.max_rate} if a.max_rate else {})))
 if a.swap_ratio is not None:
     tr.identity.swap_ratio = a.swap_ratio
 KI = {'L': (13, 15), 'R': (14, 16)}

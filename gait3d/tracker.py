@@ -31,7 +31,9 @@ SRC_COLORS = {"measured": (0, 220, 0), "constrained": (0, 165, 255), "prior": (0
 class TrackerConfig:
     kp_conf: float = 0.50             # per-joint confidence gate (requirement 4)
     epi_tol_px: float = 4.0           # rectified rig: max |y_left - y_right| (px)
-    ray_gap_mm: float = 80.0          # converging rig: max distance between viewing rays
+    ray_gap_mm: float = 80.0
+    max_rate_dps: float = 350.0       # v2.10: knee flexion cannot change faster than this (deg/s)
+    relock_frames: int = 6            # ...unless that many consecutive frames agree (real big bend)          # converging rig: max distance between viewing rays
                                       # (v2.3: 40 -> 80 mm; live gaps were 4-68 mm at 97 deg convergence)
     z_range_mm: tuple = (120.0, 2000.0)
     ghost_ratio: float = 0.35
@@ -84,6 +86,40 @@ class NeutralOffset:
         return False
 
 
+class AngleRateGate:
+    """v2.10: hide physically impossible flexion jumps (wrong depth root / label flip).
+
+    A new value is accepted if it is within max_rate deg/s (+ slack) of the last
+    accepted value, or if the last accepted value is older than max_gap_s.
+    Rejected values are held as candidates; when relock_frames consecutive
+    candidates agree within relock_tol they are accepted (a real fast bend).
+    """
+
+    def __init__(self, max_rate=350.0, relock_frames=6, slack=12.0, max_gap_s=0.4, relock_tol=15.0):
+        self.max_rate, self.relock_frames, self.slack = max_rate, int(relock_frames), slack
+        self.max_gap_s, self.relock_tol = max_gap_s, relock_tol
+        self.last = None            # (t, flexion)
+        self.pending = []
+        self.rejected = 0
+
+    def __call__(self, t, f):
+        if self.last is None or t - self.last[0] > self.max_gap_s:
+            ok = True
+        else:
+            dt = max(1e-3, t - self.last[0])
+            ok = abs(f - self.last[1]) <= self.max_rate * dt + self.slack
+        if not ok:
+            self.pending.append(f)
+            if len(self.pending) >= self.relock_frames and np.ptp(self.pending[-self.relock_frames:]) <= self.relock_tol:
+                ok = True
+        if ok:
+            self.last, self.pending = (t, f), []
+            return True
+        self.rejected += 1
+        return False
+
+
+
 class GaitTracker:
     def __init__(self, geo: StereoGeometry, profile: Optional[SubjectProfile] = None,
                  cfg: TrackerConfig = TrackerConfig(), calib_seconds: float = 2.0,
@@ -97,6 +133,7 @@ class GaitTracker:
         # v2.7: smooth the thigh and shin DIRECTIONS in 3D (6 One-Euro filters per leg)
         self.dir_filters = {s: [OneEuroFilter(cfg.dir_min_cutoff, cfg.dir_beta) for _ in range(6)] for s in "LR"}
         self.neutral = NeutralOffset(neutral_seconds) if neutral_seconds > 0 else None
+        self.gates = {s: AngleRateGate(cfg.max_rate_dps, cfg.relock_frames) for s in "LR"}
         if profile:
             self._make_solvers()
 
@@ -223,7 +260,12 @@ class GaitTracker:
             self.__dict__.setdefault("_last_knee", {})[side] = (t, res.knee.copy())
             if side in out.proj:
                 self.identity.update(side, t, out.proj[side])
-            out.angle_filtered[side] = self._smooth_angle(side, res, t)
+            a_f = self._smooth_angle(side, res, t)
+            if not self.gates[side](t, 180.0 - a_f):         # v2.10 impossible jump -> hide this frame
+                out.legs.pop(side)
+                out.proj.pop(side, None)
+                continue
+            out.angle_filtered[side] = a_f
         for side in "LR":
             if side not in out.legs:
                 self.filters[side].reset()
