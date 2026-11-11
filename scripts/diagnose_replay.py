@@ -65,11 +65,17 @@ for t, pl, pr, _ in read_recording(a.recording):
         r = out.legs.get(s)
         cl = bl.conf[list(KI[s])] if bl is not None else (0, 0)
         cr = br.conf[list(KI[s])] if br is not None else (0, 0)
-        rows.append(dict(t=t - t0, s=s, det=s in out.obs, solv=r is not None,
+        raw = np.nan                       # angle straight from triangulated joints (no bone lengths)
+        if s in out.obs:
+            _z, _p = tr._measure(out.obs[s])
+            if len(_p) == 3:
+                u, v = _p['hip'] - _p['knee'], _p['ankle'] - _p['knee']
+                raw = 180 - float(np.degrees(np.arccos(np.clip(u @ v / np.linalg.norm(u) / np.linalg.norm(v), -1, 1))))
+        rows.append(dict(t=t - t0, s=s, raw=raw, sol=(180 - r.angle_deg) if r is not None else np.nan, det=s in out.obs, solv=r is not None,
                          meas=(sum(v == 'measured' for v in r.source.values()) / 3) if r else np.nan,
                          f=out.flexion_corrected.get(s, np.nan), cK0=cl[0], cA0=cl[1], cK1=cr[0], cA1=cr[1]))
     rows[-1]['sw'] = tr.identity.swaps - sw0; sw0 = tr.identity.swaps
-print(f'{"phase":7} side  det  solv meas  cK0  cK1  cA0  cA1 jump    sd   med idsw')
+print(f'{"phase":7} side  det  solv meas  cK0  cK1  cA0  cA1 jump    sd   med idsw | solver  stereo(n)')
 for name, lo, hi in phases:
     for s in 'LR':
         R = [r for r in rows if r['s'] == s and lo <= r['t'] < hi]
@@ -83,7 +89,9 @@ for name, lo, hi in phases:
         print(f'{name:7} {s}    {np.mean([r["det"] for r in R]):.2f} {np.mean([r["solv"] for r in R]):.2f} '
               f'{np.nanmean([r["meas"] for r in R]) if np.any(np.isfinite([r["meas"] for r in R])) else 0:.2f} '
               f'{m("cK0"):.2f} {m("cK1"):.2f} {m("cA0"):.2f} {m("cA1"):.2f} {jumps:4d} '
-              f'{(np.std(ff) if len(ff) else np.nan):5.1f} {(np.median(ff) if len(ff) else np.nan):5.1f} {sw:4d}')
+              f'{(np.std(ff) if len(ff) else np.nan):5.1f} {(np.median(ff) if len(ff) else np.nan):5.1f} {sw:4d} | '
+              f'{np.nanmedian([r["sol"] for r in R]) if np.any(np.isfinite([r["sol"] for r in R])) else np.nan:6.1f} '
+              f'{np.nanmedian([r["raw"] for r in R]) if np.any(np.isfinite([r["raw"] for r in R])) else np.nan:6.1f}({int(np.sum(np.isfinite([r["raw"] for r in R])))})')
 
 if a.dump:
     lo, hi = map(float, a.dump.split('-'))
