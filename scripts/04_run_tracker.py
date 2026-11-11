@@ -152,6 +152,24 @@ try:
                 fps = 0.9 * fps + 0.1 / max(1e-3, now - t_prev) if fps else 1.0 / max(1e-3, now - t_prev)
             t_prev = now
             vis = draw(rl, out, fps, skew)
+            try:                                   # v2.12: small live inset of the RIGHT camera (depth camera)
+                h, w = vis.shape[:2]
+                iw = w // 3
+                ih = int(rr.shape[0] * iw / rr.shape[1])
+                ins = cv2.resize(rr, (iw, ih))
+                sx, sy = iw / rr.shape[1], ih / rr.shape[0]
+                for side_, ob_ in out.obs.items():
+                    if ob_.xy_r is None:
+                        continue
+                    col_ = (255, 128, 0) if side_ == "L" else (0, 128, 255)
+                    for (x_, y_), c_ in zip(ob_.xy_r, ob_.conf_r):
+                        if c_ >= 0.5:
+                            cv2.circle(ins, (int(x_ * sx), int(y_ * sy)), 3, col_, -1)
+                cv2.rectangle(ins, (0, 0), (iw - 1, ih - 1), (255, 255, 255), 1)
+                cv2.putText(ins, "right cam (depth)", (4, 14), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 255, 255), 1)
+                vis[h - ih - 6:h - 6, w - iw - 6:w - 6] = ins
+            except Exception:  # noqa: BLE001  never let the display stop the measurement
+                pass
             if tracker.profile is not None:
                 live.subject = {s_: f"{tracker.profile.lengths(s_)[0]:.0f}/{tracker.profile.lengths(s_)[1]:.0f}" for s_ in "LR"}
             live.push(t, out.flexion_corrected, out.status, fps, vis)
