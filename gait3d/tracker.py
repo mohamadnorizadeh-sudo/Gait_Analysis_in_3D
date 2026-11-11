@@ -32,7 +32,7 @@ class TrackerConfig:
     kp_conf: float = 0.50             # per-joint confidence gate (requirement 4)
     epi_tol_px: float = 4.0           # rectified rig: max |y_left - y_right| (px)
     ray_gap_mm: float = 80.0
-    max_rate_dps: float = 350.0       # v2.10: knee flexion cannot change faster than this (deg/s)
+    max_rate_dps: float = 0.0   # 0 = off (v2.10 WIP, see tests/test_rate_gate.py)
     relock_frames: int = 6            # ...unless that many consecutive frames agree (real big bend)          # converging rig: max distance between viewing rays
                                       # (v2.3: 40 -> 80 mm; live gaps were 4-68 mm at 97 deg convergence)
     z_range_mm: tuple = (120.0, 2000.0)
@@ -133,7 +133,7 @@ class GaitTracker:
         # v2.7: smooth the thigh and shin DIRECTIONS in 3D (6 One-Euro filters per leg)
         self.dir_filters = {s: [OneEuroFilter(cfg.dir_min_cutoff, cfg.dir_beta) for _ in range(6)] for s in "LR"}
         self.neutral = NeutralOffset(neutral_seconds) if neutral_seconds > 0 else None
-        self.gates = {s: AngleRateGate(cfg.max_rate_dps, cfg.relock_frames) for s in "LR"}
+        self.gates = {s: AngleRateGate(cfg.max_rate_dps, cfg.relock_frames) for s in "LR"} if cfg.max_rate_dps > 0 else {}
         if profile:
             self._make_solvers()
 
@@ -261,7 +261,7 @@ class GaitTracker:
             if side in out.proj:
                 self.identity.update(side, t, out.proj[side])
             a_f = self._smooth_angle(side, res, t)
-            if not self.gates[side](t, 180.0 - a_f):         # v2.10 impossible jump -> hide this frame
+            if self.gates and not self.gates[side](t, 180.0 - a_f):         # v2.10 impossible jump -> hide this frame
                 out.legs.pop(side)
                 out.proj.pop(side, None)
                 continue
