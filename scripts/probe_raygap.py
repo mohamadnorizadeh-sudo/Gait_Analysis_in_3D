@@ -11,6 +11,8 @@ geo = load_geometry(sys.argv[2] if len(sys.argv) > 2 else 'stereo_calibration.np
 names = {11: 'Lhip', 12: 'Rhip', 13: 'Lkn', 14: 'Rkn', 15: 'Lank', 16: 'Rank'}
 mirror = {11: 12, 12: 11, 13: 14, 14: 13, 15: 16, 16: 15}
 ph = [('stand', 136, 145), ('Lhold', 148, 160), ('Rhold', 170, 184), ('walk', 199, 226)]
+if len(sys.argv) > 3:   # 'name:lo-hi,name:lo-hi'
+    ph = [(q.split(':')[0], *map(float, q.split(':')[1].split('-'))) for q in sys.argv[3].split(',')]
 same = {p[0]: {k: [] for k in names} for p in ph}; mir = {p[0]: {k: [] for k in names} for p in ph}
 zs = {p[0]: {k: [] for k in names} for p in ph}
 t0 = None
