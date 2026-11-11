@@ -28,6 +28,7 @@ ap.add_argument('--shin-mm', type=float, default=410)
 ap.add_argument('--lengths', default='', help='Lthigh,Lshin,Rthigh,Rshin (mm)')
 ap.add_argument('--swap-ratio', type=float, default=None)
 ap.add_argument('--knee-gate', type=float, default=None)
+ap.add_argument('--dump', default='', help='lo-hi seconds: print L/R flexion every 0.25 s')
 ap.add_argument('--phases', default='stand:136-145,Lhold:148-160,Ltwist:161-169,Rhold:170-184,Rtwist:185-198,walk:199-226')
 a = ap.parse_args()
 phases = [(p.split(':')[0], *map(float, p.split(':')[1].split('-'))) for p in a.phases.split(',')]
@@ -67,3 +68,12 @@ for name, lo, hi in phases:
               f'{np.nanmean([r["meas"] for r in R]) if np.any(np.isfinite([r["meas"] for r in R])) else 0:.2f} '
               f'{m("cK0"):.2f} {m("cK1"):.2f} {m("cA0"):.2f} {m("cA1"):.2f} {jumps:4d} '
               f'{(np.std(ff) if len(ff) else np.nan):5.1f} {(np.median(ff) if len(ff) else np.nan):5.1f} {sw:4d}')
+
+if a.dump:
+    lo, hi = map(float, a.dump.split('-'))
+    out = []
+    for b in np.arange(lo, hi, 0.25):
+        v = {s: [r['f'] for r in rows if r['s'] == s and b <= r['t'] < b + 0.25 and np.isfinite(r['f'])] for s in 'LR'}
+        out.append(f"{b:6.2f} " + " ".join(f"{np.median(v[s]):4.0f}" if v[s] else "   -" for s in 'LR'))
+    for i in range(0, len(out), 4):
+        print(' | '.join(out[i:i + 4]))
