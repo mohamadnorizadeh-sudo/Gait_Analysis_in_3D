@@ -20,7 +20,7 @@ from .identity import LegIdentity
 from .pose import (LegObs, best_person, legs_from_people, match_right,
                    people_from_result, suppress_ghost_legs)
 from .profile import BoneLengthCalibrator, SubjectProfile
-from .rigid_leg import JOINTS, LegResult, RigidLegSolver
+from .rigid_leg import JOINTS, LegResult, RigidLegSolver, joint_angle_deg
 from .stereo_geometry import StereoGeometry, sample_sgbm_point
 
 COLORS = {"L": (255, 200, 0), "R": (0, 200, 255)}           # BGR
@@ -32,6 +32,10 @@ class TrackerConfig:
     kp_conf: float = 0.50             # per-joint confidence gate (requirement 4)
     epi_tol_px: float = 4.0           # rectified rig: max |y_left - y_right| (px)
     ray_gap_mm: float = 80.0
+    # v2.16: when all three joints are triangulated, use them directly (the fixed-length
+    # solver added 8-28 deg of false flexion in deep bends); solver only fills in hidden joints.
+    stereo_first: int = 1
+    adapt_lengths: float = 0.1        # EMA rate that keeps the solver's lengths = recently measured ones
     min_joint_depth_mm: float = 200.0  # v2.11: no joint closer than 20 cm to the camera (ankle-on-lens spikes)
     anatomy: int = 0                  # v2.11: 1 = reject ankle roots that bend the knee forward
     max_rate_dps: float = 0.0   # 0 = off (v2.10 WIP, see tests/test_rate_gate.py)
@@ -260,7 +264,24 @@ class GaitTracker:
                     rays[n] = (self.geo.C_r, self.geo.ray_right_in_left(*obs.xy_r[j]))
                     hints[n] = self.geo.ray(*obs.xy[j])     # cam0's low-confidence guess
                     zs[n] = None
-            res = self.solvers[side].solve(rays, zs, hints, mscale)
+            sv = self.solvers[side]
+            res = None
+            if self.cfg.stereo_first and len(mp) == 3:
+                H, K, A = mp["hip"], mp["knee"], mp["ankle"]
+                ang = joint_angle_deg(H, K, A)
+                lt, ls = float(np.linalg.norm(H - K)), float(np.linalg.norm(A - K))
+                L0t, L0s = self.profile.lengths(side)
+                # plausibility: measured segments within +-35 % of the subject's lengths
+                if ang is not None and 0.65 * L0t < lt < 1.35 * L0t and 0.65 * L0s < ls < 1.35 * L0s:
+                    res = LegResult(H.copy(), K.copy(), A.copy(), ang,
+                                    {"hip": "measured", "knee": "measured", "ankle": "measured"}, 0.0)
+                    a = self.cfg.adapt_lengths
+                    if a > 0:                         # keep the fallback solver consistent with what we measure
+                        sv.L_thigh = float(np.clip((1 - a) * sv.L_thigh + a * lt, 0.8 * L0t, 1.2 * L0t))
+                        sv.L_shin = float(np.clip((1 - a) * sv.L_shin + a * ls, 0.8 * L0s, 1.2 * L0s))
+                    sv._prev, sv._prev_age = {"hip": H.copy(), "knee": K.copy(), "ankle": A.copy()}, 0
+            if res is None:
+                res = sv.solve(rays, zs, hints, mscale)
             if res is not None:
                 out.legs[side] = res
                 if hasattr(self.geo, "project_left"):
