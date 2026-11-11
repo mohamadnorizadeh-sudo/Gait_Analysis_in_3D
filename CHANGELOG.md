@@ -5,6 +5,14 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v2.11 (2026-11-11) - no joint on the camera lens  [deployed]
+**Issue:** walking spikes of 85-112 deg. A per-frame probe (`diagnose_replay.py --probe`) showed the ankle solved
+at Z = 0-30 mm: knee ~540 mm from the camera with a 541 mm shin puts the second ray-sphere root at the lens.
+**Fix:** `TrackerConfig.min_joint_depth_mm = 200` - roots closer than 20 cm are discarded; if only an impossible
+solution exists the leg is hidden for that frame (no false value). Anatomy rule (`anatomy=1`) tried, no effect, left off.
+**Replay of session 05:48:** holds/standing identical to v2.9; walking spread L 29.6 -> 18.7 deg, R 23.5 -> 13.4 deg;
+2 of 3 large spikes gone; identity swaps 32 -> 14. Live start/stop check OK on the Pi.
+
 ## v2.10 (WIP, off by default) - knee-speed gate
 **Idea:** hide flexion changes faster than 350 deg/s (walking spikes to 85-110 deg).
 **Try 1 (2e0931c):** spikes lasting >= 3 frames passed, because the allowed change grew with the time since the
