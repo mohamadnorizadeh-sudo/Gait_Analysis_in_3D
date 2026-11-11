@@ -5,6 +5,14 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v2.8.2 (2026-11-11)
+**Issue:** the session of 05:31 had almost no leg detections (knee conf 0.1-0.26, no person after 90 s)
+and "restart" created no new session. The tracker had stopped responding after a power dip
+(`throttled=0x50000`) and ignored the stop signal, so the restart found it still running and gave up.
+**Checked:** `scripts/orientation_check.py` (new) confirms rotation 180/180 is right (leg conf 0.97 vs 0.71-0.75).
+**Fix:** `stop_session.sh` escalates INT -> TERM -> KILL and waits for exit; `start_session.sh` waits up to 10 s
+for a previous session to finish before starting.
+
 ## v2.0.0 — rigid, rotation-invariant 3D tracker (2026-11-09)
 
 ### Diagnosis of v1 (from the saved notebook outputs)

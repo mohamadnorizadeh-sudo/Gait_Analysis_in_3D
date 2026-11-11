@@ -1,10 +1,14 @@
 #!/bin/bash
-# One-click gait session (v2.8): Pi-screen display + web dashboard + keypoint recording.
+# One-click gait session (v2.8.2): Pi-screen display + web dashboard + keypoint recording.
 # Settings live in config/session.env (edit there, not here).
 cd "$(dirname "$0")/.." || exit 1
 set -a; source config/session.env; set +a
+# A previous session that is still shutting down gets up to 10 s to finish
+# (fixes the restart race: stop + start right after each other made no new session).
+for _ in $(seq 1 20); do pgrep -f 04_run_tracker.py >/dev/null || break; sleep 0.5; done
 if pgrep -f 04_run_tracker.py >/dev/null; then
-  notify-send "Gait 3D" "A session is already running" 2>/dev/null; exit 0
+  notify-send "Gait 3D" "A session is already running - press Stop first" 2>/dev/null
+  echo "already running - run scripts/stop_session.sh first"; exit 0
 fi
 D=runs/session_$(date +%Y%m%d_%H%M%S); mkdir -p "$D"
 export DISPLAY=${DISPLAY:-:0}
