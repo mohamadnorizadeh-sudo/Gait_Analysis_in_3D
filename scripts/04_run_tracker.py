@@ -44,6 +44,7 @@ ap.add_argument("--profile-out", default="subject_profile.json", help="where the
 ap.add_argument("--thigh-mm", type=float)
 ap.add_argument("--shin-mm", type=float)
 ap.add_argument("--kp-conf", type=float, default=0.50)
+ap.add_argument("--stereo-first", type=int, default=1, help="v2.16: 1 = use triangulated joints directly when all three are seen")
 ap.add_argument("--sgbm", action="store_true", help="also use SGBM patches as a depth fallback (slower)")
 ap.add_argument("--z-min-mm", type=float, default=150.0)
 ap.add_argument("--csv", default=time.strftime("gait_%Y%m%d_%H%M%S.csv"))
@@ -79,7 +80,7 @@ if profile:
     print(f"[profile] thigh L/R {profile.L_thigh_L:.0f}/{profile.L_thigh_R:.0f} mm, "
           f"shin L/R {profile.L_shin_L:.0f}/{profile.L_shin_R:.0f} mm ({profile.method})")
 
-tracker = GaitTracker(geo, profile, TrackerConfig(kp_conf=args.kp_conf))
+tracker = GaitTracker(geo, profile, TrackerConfig(kp_conf=args.kp_conf, stereo_first=args.stereo_first))
 if args.model.endswith(".hef"):
     from gait3d.hailo_pose import HailoPoseEstimator          # AI HAT+ 2 (Hailo-10H), v2.4
     try:

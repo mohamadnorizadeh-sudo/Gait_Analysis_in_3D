@@ -5,6 +5,20 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v2.16 (2026-11-11) - stereo-first joints
+**Issue (user):** "left leg is more reliable than right". `diagnose_replay` now prints the solver angle next to the
+angle straight from the triangulated joints: the fixed-length solver added 8-28 deg of false flexion
+(deep right bend: solver 85 deg vs stereo 57 deg; left hold 62 vs 49). Triangulation itself was fine
+(ray gaps 9-30 mm on the right leg). Note: an earlier "57 mm vs 8 mm" ray-gap claim came from wrong time windows;
+an extra round of edge calibration views (calib v5b) changed nothing measurable and is not used.
+**Fix:** `TrackerConfig.stereo_first=1`: when hip, knee and ankle are all triangulated (segments within +-35 % of the
+subject's lengths) they are used directly; the rigid solver only fills in when a joint is hidden, with its bone
+lengths following the measured ones (EMA 0.1, clamped +-20 %).
+**Replay of session 11:58:** spread standing 4/6 deg (was 10/9), deep right bend 1 deg (was 5) at 52 deg (was 80),
+left hold 1.5 deg (was 4) at 34 deg (was 43), jumps 5 (was 17). Known weak spot: the straight leg reads 13-15 deg
+while the other leg is deeply bent (was ~5), because it is not fully visible in one camera then.
+`--stereo-first 0` restores v2.15 behaviour.
+
 ## v2.15 (2026-11-11) - cameras moved, calibration v5, new leg lengths
 **Issue:** video review (`frames_at.py`, `view_check.py`) showed the old mounting was the limit: a lifted knee came
 within 28 cm of the main camera, and the right camera saw the legs from the side (one leg hiding the other).

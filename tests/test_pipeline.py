@@ -118,7 +118,11 @@ def test_end_to_end(tmp_path, monkeypatch):
     script = os.path.join(os.path.dirname(__file__), "..", "scripts", "04_run_tracker.py")
     monkeypatch.setattr(sys, "argv", [script, "--calib", str(calib), "--headless", "--seconds", "1e9",
                                       "--csv", str(out_csv), "--profile-out", str(prof),
-                                      "--web-port", "0", "--record-kp", str(tmp_path / "kp.jsonl")])
+                                      "--web-port", "0", "--record-kp", str(tmp_path / "kp.jsonl"),
+                                      # synthetic rig: exact bone lengths + pure pixel noise -> the rigid
+                                      # solver is the right reference here (v2.16 stereo-first is for real
+                                      # keypoints whose surface offset breaks the fixed-length assumption)
+                                      "--stereo-first", "0"])
     monkeypatch.setenv("GAIT3D_NO_HARD_EXIT", "1")
     Sim.frame = 0
     # stop after 10 simulated seconds
