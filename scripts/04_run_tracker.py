@@ -201,4 +201,5 @@ finally:
         import traceback
         traceback.print_exc()
     sys.stdout.flush(); sys.stderr.flush()
-    os._exit(1 if _exc not in (None, KeyboardInterrupt) else 0)                                # do not wait on lingering library threads
+    if not os.environ.get("GAIT3D_NO_HARD_EXIT"):   # tests run this script in-process
+        os._exit(1 if _exc not in (None, KeyboardInterrupt) else 0)                                # do not wait on lingering library threads

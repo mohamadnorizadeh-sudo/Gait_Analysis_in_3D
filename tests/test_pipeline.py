@@ -119,6 +119,7 @@ def test_end_to_end(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "argv", [script, "--calib", str(calib), "--headless", "--seconds", "1e9",
                                       "--csv", str(out_csv), "--profile-out", str(prof),
                                       "--web-port", "0", "--record-kp", str(tmp_path / "kp.jsonl")])
+    monkeypatch.setenv("GAIT3D_NO_HARD_EXIT", "1")
     Sim.frame = 0
     # stop after 10 simulated seconds
     orig_read = FakeCam.read
