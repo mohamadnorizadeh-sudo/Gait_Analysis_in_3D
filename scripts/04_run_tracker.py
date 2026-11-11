@@ -175,7 +175,7 @@ try:
             live.push(t, out.flexion_corrected, out.status, fps, vis)
             if args.save_video:
                 if writer is None:
-                    writer = cv2.VideoWriter(args.save_video, cv2.VideoWriter_fourcc(*"mp4v"), 15,
+                    writer = cv2.VideoWriter(args.save_video, cv2.VideoWriter_fourcc(*"mp4v"), 11,
                                              vis.shape[1::-1])
                 writer.write(vis)
             if args.headless:

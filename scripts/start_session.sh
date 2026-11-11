@@ -1,5 +1,5 @@
 #!/bin/bash
-# One-click gait session (v2.9): Pi-screen display + web dashboard + keypoint recording.
+# One-click gait session (v2.14): Pi-screen display + web dashboard + keypoint recording.
 # Settings live in config/session.env (edit there, not here).
 cd "$(dirname "$0")/.." || exit 1
 set -a; source config/session.env; set +a
@@ -13,9 +13,11 @@ fi
 D=runs/session_$(date +%Y%m%d_%H%M%S); mkdir -p "$D"
 export DISPLAY=${DISPLAY:-:0}
 # v2.9: bone lengths measured by the cameras (PROFILE) beat tape lengths; fall back to tape
+# v2.14: optional annotated video (left view + right-camera inset) for frame-by-frame review
+VID_ARGS=(); [ "${SAVE_VIDEO:-0}" = "1" ] && VID_ARGS=(--save-video "$D/video.mp4")
 if [ -n "$PROFILE" ] && [ -f "$PROFILE" ]; then LEN_ARGS=(--profile "$PROFILE"); else LEN_ARGS=(--thigh-mm "$THIGH_MM" --shin-mm "$SHIN_MM"); fi
 nohup python3 -u scripts/04_run_tracker.py --source shm --rot-left "$ROT_LEFT" --rot-right "$ROT_RIGHT" \
-  --calib "$CALIB" --model "$MODEL" "${LEN_ARGS[@]}" \
+  --calib "$CALIB" --model "$MODEL" "${LEN_ARGS[@]}" "${VID_ARGS[@]}" \
   --seconds "$MAX_SECONDS" --web-port "$WEB_PORT" --csv "$D/angles.csv" --record-kp "$D/keypoints.jsonl" \
   > "$D/run.log" 2>&1 &
 echo "$D" > runs/LAST_SESSION
