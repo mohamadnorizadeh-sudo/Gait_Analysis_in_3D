@@ -36,6 +36,8 @@ class TrackerConfig:
     # solver added 8-28 deg of false flexion in deep bends); solver only fills in hidden joints.
     stereo_first: int = 1
     adapt_lengths: float = 0.1        # EMA rate that keeps the solver's lengths = recently measured ones
+    adapt_max_flex: float = 20.0      # ...but only learn lengths while the leg is nearly straight (bent-knee
+                                      # keypoints shorten the segments and then bias the fallback)
     min_joint_depth_mm: float = 200.0  # v2.11: no joint closer than 20 cm to the camera (ankle-on-lens spikes)
     anatomy: int = 0                  # v2.11: 1 = reject ankle roots that bend the knee forward
     max_rate_dps: float = 0.0   # 0 = off (v2.10 WIP, see tests/test_rate_gate.py)
@@ -276,7 +278,7 @@ class GaitTracker:
                     res = LegResult(H.copy(), K.copy(), A.copy(), ang,
                                     {"hip": "measured", "knee": "measured", "ankle": "measured"}, 0.0)
                     a = self.cfg.adapt_lengths
-                    if a > 0:                         # keep the fallback solver consistent with what we measure
+                    if a > 0 and 180.0 - ang < self.cfg.adapt_max_flex:   # learn lengths only from a near-straight leg
                         sv.L_thigh = float(np.clip((1 - a) * sv.L_thigh + a * lt, 0.8 * L0t, 1.2 * L0t))
                         sv.L_shin = float(np.clip((1 - a) * sv.L_shin + a * ls, 0.8 * L0s, 1.2 * L0s))
                     sv._prev, sv._prev_age = {"hip": H.copy(), "knee": K.copy(), "ankle": A.copy()}, 0
