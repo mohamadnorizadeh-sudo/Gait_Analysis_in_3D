@@ -5,6 +5,13 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v2.13 (2026-11-11) - standing reference only in the first 10 s
+**Issue (user):** the 0-deg reference was taken from ANY 3 s of quiet standing. If the patient did not stand
+cleanly at the start, a tired, bent-knee stance later in the session could become the new 0 deg.
+**Fix:** `NeutralOffset(window_s=10)`: the reference can only be captured within 10 s after both legs are first
+seen. If no clean stand happens in that window, raw angles are used (offset 0) and the status says so; restart the
+session to redo. v2.12 (same day): live inset of the right (depth) camera in the Pi window.
+
 ## v2.11 (2026-11-11) - no joint on the camera lens  [deployed]
 **Issue:** walking spikes of 85-112 deg. A per-frame probe (`diagnose_replay.py --probe`) showed the ankle solved
 at Z = 0-30 mm: knee ~540 mm from the camera with a 541 mm shin puts the second ray-sphere root at the lens.

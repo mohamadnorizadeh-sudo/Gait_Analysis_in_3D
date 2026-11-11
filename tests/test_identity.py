@@ -44,3 +44,26 @@ def test_neutral_offset():
         t += 0.1
         assert t < 5
     assert abs(n.offset["L"] - 15.0) < 0.6 and n.offset["R"] == 18.0
+
+
+def test_neutral_only_in_first_window():
+    """v2.13: a still, bent stance AFTER the first 10 s must not become the 0 deg reference."""
+    from gait3d.tracker import NeutralOffset
+    n = NeutralOffset(seconds=3.0, window_s=10.0)
+    t = 0.0
+    while t < 12.0:                         # walking: too much spread, no reference
+        n.add(t, {"L": 30.0 * (int(t * 4) % 2), "R": 25.0 * (int(t * 4 + 1) % 2)})
+        t += 0.1
+    assert n.failed and n.offset == {"L": 0.0, "R": 0.0}
+    for k in range(60):                     # tired patient standing still with 20 deg bent knees
+        n.add(12.0 + k * 0.1, {"L": 20.0, "R": 20.0})
+    assert n.offset == {"L": 0.0, "R": 0.0}
+
+
+def test_neutral_taken_inside_window():
+    from gait3d.tracker import NeutralOffset
+    n = NeutralOffset(seconds=3.0, window_s=10.0)
+    ok = False
+    for k in range(50):
+        ok = n.add(k * 0.1, {"L": 12.0, "R": 15.0}) or ok
+    assert ok and not n.failed and abs(n.offset["L"] - 12.0) < 1e-6

@@ -63,13 +63,30 @@ class NeutralOffset:
     (seen live: 13-20 deg while standing). Like a gait-lab static trial, the
     median flexion during quiet standing is recorded per leg and subtracted."""
 
-    def __init__(self, seconds=3.0, max_spread=8.0):
+    def __init__(self, seconds=3.0, max_spread=8.0, window_s=10.0):
         self.seconds, self.max_spread = seconds, max_spread
+        # v2.13: the reference may ONLY be taken in the first window_s seconds after both
+        # legs are first seen.  Otherwise a tired patient standing with bent knees later in
+        # the session would silently become the new 0 deg.
+        self.window_s = window_s
+        self.t_first = None
+        self.failed = False
         self.samples = {"L": [], "R": []}
         self.t0 = None
         self.offset = None
 
+    def expired(self, t):
+        return self.t_first is not None and t - self.t_first > self.window_s
+
     def add(self, t, flex):
+        if self.offset is not None or self.failed:
+            return False
+        if self.t_first is None:
+            self.t_first = t
+        if self.expired(t):
+            self.failed = True                 # no clean stand in time: keep raw angles (offset 0)
+            self.offset = {"L": 0.0, "R": 0.0}
+            return False
         if self.t0 is None:
             self.t0 = t
         for s, f in flex.items():
@@ -280,11 +297,15 @@ class GaitTracker:
                     f.reset()
         flex = {s: 180.0 - a for s, a in out.angle_filtered.items()}
         if self.neutral is not None and self.neutral.offset is None:
-            if len(flex) == 2 and self.neutral.add(t, flex):
+            if (len(flex) == 2 or self.neutral.expired(t)) and self.neutral.add(t, flex):
                 pass
             if self.neutral.offset is None:
                 el = 0.0 if self.neutral.t0 is None else t - self.neutral.t0
-                out.status = f"STAND STRAIGHT & STILL  {min(el, self.neutral.seconds):.1f}/{self.neutral.seconds:.0f} s"
+                left = 0.0 if self.neutral.t_first is None else max(0.0, self.neutral.window_s - (t - self.neutral.t_first))
+                out.status = (f"STAND STRAIGHT & STILL  {min(el, self.neutral.seconds):.1f}/{self.neutral.seconds:.0f} s"
+                              f"  ({left:.0f} s left)")
+            elif self.neutral.failed:
+                out.status = "no standing reference in first 10 s - raw angles (restart the session to redo)"
             else:
                 out.status = f"neutral saved (L {self.neutral.offset['L']:.0f}, R {self.neutral.offset['R']:.0f} deg)"
         off = self.neutral.offset if (self.neutral is not None and self.neutral.offset) else {}
