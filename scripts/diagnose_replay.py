@@ -32,6 +32,7 @@ ap.add_argument('--dump', default='', help='lo-hi seconds: print L/R flexion eve
 ap.add_argument('--max-rate', type=float, default=None)
 ap.add_argument('--anatomy', type=int, default=0)
 ap.add_argument('--median', type=int, default=0)
+ap.add_argument('--probe', default='', help='lo-hi:side  print keypoints & 3D per frame')
 ap.add_argument('--phases', default='stand:136-145,Lhold:148-160,Ltwist:161-169,Rhold:170-184,Rtwist:185-198,walk:199-226')
 a = ap.parse_args()
 phases = [(p.split(':')[0], *map(float, p.split(':')[1].split('-'))) for p in a.phases.split(',')]
@@ -47,6 +48,18 @@ rows, t0, sw0 = [], None, 0
 for t, pl, pr, _ in read_recording(a.recording):
     t0 = t if t0 is None else t0
     out = tr.process(t, pl, pr)
+    if a.probe:
+        _r, _s = a.probe.split(':'); _lo, _hi = map(float, _r.split('-'))
+        if _lo <= t - t0 < _hi:
+            o = out.obs.get(_s); r = out.legs.get(_s)
+            txt = f'{t - t0:7.2f} '
+            if o is not None:
+                txt += 'c0 ' + ' '.join(f'{x:4.0f},{y:4.0f}/{c:.2f}' for (x, y), c in zip(o.xy, o.conf))
+                if o.xy_r is not None:
+                    txt += ' | c1 ' + ' '.join(f'{x:4.0f},{y:4.0f}/{c:.2f}' for (x, y), c in zip(o.xy_r, o.conf_r))
+            if r is not None:
+                txt += f' | z {r.hip[2]:4.0f} {r.knee[2]:4.0f} {r.ankle[2]:4.0f} f{out.flexion_corrected.get(_s, float("nan")):4.0f} ' + ''.join(v[0] for v in r.source.values())
+            print(txt)
     bl, br = best_person(people_from_result(pl)), best_person(people_from_result(pr))
     for s in 'LR':
         r = out.legs.get(s)
