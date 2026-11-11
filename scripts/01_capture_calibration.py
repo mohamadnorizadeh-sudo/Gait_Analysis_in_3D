@@ -41,6 +41,7 @@ ap.add_argument("--source", choices=["picamera", "shm"], default="picamera")
 ap.add_argument("--rot-left", type=int, default=0, help="extra rotation of the LEFT image (0/90/180/270)")
 ap.add_argument("--rot-right", type=int, default=0, help="extra rotation of the RIGHT image, e.g. 180 if mounted upside down")
 ap.add_argument("--swap", action="store_true", help="shm source: use cam1 as the LEFT camera")
+ap.add_argument("--max-skew-ms", type=float, default=8.0, help="max time between the two frames; with the board held still ~15 is fine")
 ap.add_argument("--headless", action="store_true", help="no preview window (e.g. over a remote shell)")
 args = ap.parse_args()
 
@@ -63,6 +64,7 @@ def sharpness(gray, corners):
 
 count = len(os.listdir(f"{args.out}/left"))
 last = None
+prev_cl = None            # v2.14: corners in the previous frame (stillness check)
 coverage = None
 print(f"Starting at pair {count}. Press q to quit.")
 with open_source(args.source, lens_position=args.lens, swap=args.swap, rot=(args.rot_left, args.rot_right)) as cam:
@@ -74,17 +76,24 @@ with open_source(args.source, lens_position=args.lens, swap=args.swap, rot=(args
         cl, cr = find(gl), find(gr)
         vis_l, vis_r = L.copy(), R.copy()
         msg = "board not in both views"
+        if cl is None:
+            prev_cl = None
         if cl is not None and cr is not None:
             cv2.drawChessboardCorners(vis_l, CB, cl, True)
             cv2.drawChessboardCorners(vis_r, CB, cr, True)
             sh = min(sharpness(gl, cl), sharpness(gr, cr))
             moved = last is None or np.mean(np.linalg.norm(cl.reshape(-1, 2) - last.reshape(-1, 2), axis=1)) > args.min_move_px
+            # with the frames up to max_skew_ms apart, the board must be STILL so both views see the same pose
+            still = prev_cl is not None and np.mean(np.linalg.norm(cl.reshape(-1, 2) - prev_cl.reshape(-1, 2), axis=1)) < 1.5
+            prev_cl = cl
             if sh < args.min_sharpness:
                 msg = f"blurry ({sh:.0f}) - hold still"
             elif not moved:
                 msg = "move the board to a new place / angle"
-            elif skew > 8.0:
+            elif skew > args.max_skew_ms:
                 msg = f"frames not in sync ({skew:.1f} ms)"
+            elif skew > 4.0 and not still:
+                msg = "hold the board still"
             else:
                 cv2.imwrite(f"{args.out}/left/img_{count:02d}.png", L)
                 cv2.imwrite(f"{args.out}/right/img_{count:02d}.png", R)
