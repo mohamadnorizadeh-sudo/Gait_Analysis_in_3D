@@ -1,9 +1,9 @@
 {
-  "L_thigh_L": 419.0,
-  "L_shin_L": 541.0,
-  "L_thigh_R": 426.0,
-  "L_shin_R": 446.0,
-  "n_samples": 428,
-  "created": "2026-11-11 measured by the stereo rig (session_20261111_054816, standing + holds)",
+  "L_thigh_L": 407.0,
+  "L_shin_L": 442.0,
+  "L_thigh_R": 412.0,
+  "L_shin_R": 423.0,
+  "n_samples": 231,
+  "created": "2026-11-11 measured by the stereo rig after the camera move + calibration v5 (session_20261111_115247, first 12 s standing)",
   "method": "stereo"
 }

@@ -5,6 +5,18 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v2.15 (2026-11-11) - cameras moved, calibration v5, new leg lengths
+**Issue:** video review (`frames_at.py`, `view_check.py`) showed the old mounting was the limit: a lifted knee came
+within 28 cm of the main camera, and the right camera saw the legs from the side (one leg hiding the other).
+**Change (hardware, user):** cameras re-aimed to look at the legs from the front: convergence 51 -> 36 deg.
+**Calibration v5:** 35+35 single-camera views, 40 pairs; RMS 0.35 / 0.41 / stereo 0.31 px; board squares 25.06 +- 0.24 mm,
+scale error 0.2 %, flatness 0.4 mm, baseline 382 mm. Capture tool got `--max-skew-ms` + a stillness check (frames were
+8-9 ms apart after a reboot and every pair was refused).
+**Leg lengths (rig-measured):** thigh 407 / 412, shin 442 / 423 mm (tape 420 / 410). Old rig gave a 541 mm left shin.
+**Replay of session 11:52 with these lengths:** standing L 1-10 / R 0-4 deg (spread <= 6 / <= 2), left hold ~56 deg
+with spread 1-9 deg while the standing right leg stays at 2-6 deg. Still open: during a deep right bend the standing
+LEFT leg reads ~31 deg, and the deep right bend itself wobbles (spread 15-17 deg).
+
 ## v2.13 (2026-11-11) - standing reference only in the first 10 s
 **Issue (user):** the 0-deg reference was taken from ANY 3 s of quiet standing. If the patient did not stand
 cleanly at the start, a tired, bent-knee stance later in the session could become the new 0 deg.
