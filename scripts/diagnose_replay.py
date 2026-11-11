@@ -32,7 +32,7 @@ ap.add_argument('--dump', default='', help='lo-hi seconds: print L/R flexion eve
 ap.add_argument('--max-rate', type=float, default=None)
 ap.add_argument('--anatomy', type=int, default=0)
 ap.add_argument('--stereo-first', type=int, default=1)
-ap.add_argument('--adapt', type=float, default=0.1)
+ap.add_argument('--adapt', type=float, default=0.0)
 ap.add_argument('--adapt-max-flex', type=float, default=20.0)
 ap.add_argument('--median', type=int, default=0)
 ap.add_argument('--probe', default='', help='lo-hi:side  print keypoints & 3D per frame')

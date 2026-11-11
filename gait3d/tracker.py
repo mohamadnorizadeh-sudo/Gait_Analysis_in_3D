@@ -35,7 +35,7 @@ class TrackerConfig:
     # v2.16: when all three joints are triangulated, use them directly (the fixed-length
     # solver added 8-28 deg of false flexion in deep bends); solver only fills in hidden joints.
     stereo_first: int = 1
-    adapt_lengths: float = 0.1        # EMA rate that keeps the solver's lengths = recently measured ones
+    adapt_lengths: float = 0.0        # (v2.16.1: off - learning lengths biased the straight leg) EMA rate that keeps the solver's lengths = recently measured ones
     adapt_max_flex: float = 20.0      # ...but only learn lengths while the leg is nearly straight (bent-knee
                                       # keypoints shorten the segments and then bias the fallback)
     min_joint_depth_mm: float = 200.0  # v2.11: no joint closer than 20 cm to the camera (ankle-on-lens spikes)

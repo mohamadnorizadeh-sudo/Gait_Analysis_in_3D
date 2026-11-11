@@ -5,6 +5,13 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v2.16.1 (2026-11-11) - fixed solver lengths in the fallback
+**Issue (live v2.16 test, session 12:12):** the straight left leg read 17-19 deg while the right leg was bent.
+Replay A/B of that session (standing left leg during the right hold, 3 blocks): learning lengths always
+18 / 17 / 19 deg, only from a near-straight leg 14 / 15 / 17, not at all **8 / 5 / 10 deg**. Other phases identical.
+**Fix:** `adapt_lengths = 0` (option kept). Live v2.16 otherwise: left hold 43-45 deg smooth, right hold 55-61 deg
+smooth, 0-deg reference saved when standing still.
+
 ## v2.16 (2026-11-11) - stereo-first joints
 **Issue (user):** "left leg is more reliable than right". `diagnose_replay` now prints the solver angle next to the
 angle straight from the triangulated joints: the fixed-length solver added 8-28 deg of false flexion
