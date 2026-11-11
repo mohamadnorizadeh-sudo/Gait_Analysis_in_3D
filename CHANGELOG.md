@@ -13,6 +13,10 @@ solver, which over-reads).
 measurement is learned per leg (EMA 0.05); on fallback frames that bias is removed (`fallback_bias`, 0 = off).
 **Replay of session 12:17:** straight left leg during the right hold 22 / 28 / 22 deg -> **8 / 13 / 8 deg**;
 right-leg jumps in the hold 10 -> 4; all other phases unchanged (standing -2..0 deg, left hold 36-42 deg).
+**Live v2.17 (session 12:20, deployed):** standing -3 / 0 deg; left hold 30-35 deg (spread 1.4-3.7);
+right hold 39-46 deg (spread 3-7); straight right leg during the left hold -2..-3 deg; straight left leg during
+the right hold -3..9 deg (was 22-28). Twist transitions still spread ~20 deg. No walker walking captured yet
+(subject walked into the room, 1-2 m from the cameras).
 
 ## v2.16.1 (2026-11-11) - fixed solver lengths in the fallback
 **Issue (live v2.16 test, session 12:12):** the straight left leg read 17-19 deg while the right leg was bent.
