@@ -5,6 +5,17 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## Status 2026-11-12 (end of day) - next steps
+* Validation (`validation/README.md`): front-facing cameras under-read knee flexion: left holds -14/-21/-2 deg,
+  right holds -36/-20/-77 deg, walking swing peaks about half. Detection is fine (conf 0.9-1.0); the error is the
+  depth geometry of a front view.
+* Cameras re-mounted (not yet fixed): higher, looking down from the front, ~50 cm apart, rotation still 180/180.
+  Live view: all leg keypoints 0.97-1.00 in both cameras. Calibration v5 is NOT valid for this mounting.
+* AI HAT dropped out again ("Device disconnected", throttled=0x50000 under-voltage) -> reboot needed; power
+  supply to be checked (27 W direct).
+* Next: fix cameras -> reboot -> recalibrate (parts 1+2) -> leg lengths -> repeat marker validation (both legs)
+  and compare with the 12 Nov numbers. If still poor: side-view camera.
+
 ## v2.17 (2026-11-11) - learned fallback bias
 **Issue (live v2.16.1, session 12:17):** while the right leg was bent, the straight left leg flickered between
 ~0 deg (both cameras saw it -> direct measurement) and 25-28 deg (partly hidden in the right camera -> fixed-length
