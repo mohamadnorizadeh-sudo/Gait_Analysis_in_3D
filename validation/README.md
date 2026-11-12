@@ -15,5 +15,8 @@ in `sys_L.txt`.
 | Hold ~101 deg | 101.4 | 99.0 | -2.4 | 7.4 |
 | Standing after | 1.7 | -2.0 | -3.7 | 0.4 |
 
-Walking could not be validated: the markers were lost once the subject moved with the walker.
+Walking (10 steps with the walker, 29 half-second bins): mean difference -3.7 deg, mean |difference| 7.6 deg,
+correlation 0.61. Step timing is captured, but swing peaks are **under-read by about half**: reference
+~40-56 deg per step, system ~18-26 deg. (First tracker version lost the markers while walking: it only searched
+the right part of the image and never re-acquired; v2 detector = white squares fully surrounded by dark fabric.)
 ![left knee](validation_left_knee.png)
