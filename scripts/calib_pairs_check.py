@@ -6,6 +6,7 @@ import argparse, glob, os, sys
 import cv2, numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from gait3d.stereo_geometry import load_geometry
+from gait3d.calibration import refine_corners
 ap = argparse.ArgumentParser(); ap.add_argument('data'); ap.add_argument('calib')
 ap.add_argument('--square-mm', type=float, default=25.0); ap.add_argument('--cols', type=int, default=9); ap.add_argument('--rows', type=int, default=6)
 a = ap.parse_args()
@@ -19,8 +20,8 @@ for pl in sorted(glob.glob(os.path.join(a.data, 'left', '*.png'))):
     okl, cl = cv2.findChessboardCorners(gl, CB, F); okr, cr = cv2.findChessboardCorners(gr, CB, F)
     if not (okl and okr): continue
     crit = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.01)
-    cl = cv2.cornerSubPix(gl, cl, (5, 5), (-1, -1), crit).reshape(-1, 2)
-    cr = cv2.cornerSubPix(gr, cr, (5, 5), (-1, -1), crit).reshape(-1, 2)
+    cl = refine_corners(gl, cl, a.cols, a.rows, crit).reshape(-1, 2)  # v2.18: window fits the board
+    cr = refine_corners(gr, cr, a.cols, a.rows, crit).reshape(-1, 2)
     if np.dot(cl[-1] - cl[0], cr[-1] - cr[0]) < 0:  # v2.17.2: same corner order in both views
         cr = cr[::-1].copy()
     P = np.array([geo.triangulate(*l, *r) for l, r in zip(cl, cr)])

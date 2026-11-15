@@ -28,6 +28,18 @@ import numpy as np
 SUBPIX = (cv2.TERM_CRITERIA_MAX_ITER + cv2.TERM_CRITERIA_EPS, 100, 1e-6)
 
 
+def refine_corners(gray, corners, cols, rows, crit=SUBPIX, max_half=5):
+    """cornerSubPix with a search window that fits the board (v2.18).
+
+    The fixed 5x5 half-window (11x11 px) is wider than a square once the board is ~1 m away in the
+    640x360 stream (squares 6-9 px): the search then reaches the neighbouring corners and the board
+    triangulates bent by up to 39 mm. Half-window = 40 % of the smallest square, clamped to 2..max_half."""
+    c = corners.reshape(rows, cols, 2)
+    sq = min(np.linalg.norm(np.diff(c, axis=1), axis=2).min(), np.linalg.norm(np.diff(c, axis=0), axis=2).min())
+    h = int(max(2, min(max_half, round(0.4 * sq))))
+    return cv2.cornerSubPix(gray, corners, (h, h), (-1, -1), crit)
+
+
 def _flag(name):
     """OpenCV 4.x keeps fisheye flags in cv2.fisheye (Pi OS); OpenCV 5 moved them to cv2."""
     return getattr(cv2.fisheye, name, None) if hasattr(cv2.fisheye, name) else getattr(cv2, name)

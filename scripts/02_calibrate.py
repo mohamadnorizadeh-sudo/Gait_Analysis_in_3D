@@ -18,7 +18,7 @@ import cv2
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from gait3d.calibration import SUBPIX, object_points, stereo_calibrate  # noqa: E402
+from gait3d.calibration import SUBPIX, object_points, refine_corners, stereo_calibrate  # noqa: E402
 from gait3d.stereo_geometry import StereoGeometry  # noqa: E402,F401
 
 ap = argparse.ArgumentParser()
@@ -59,9 +59,9 @@ for a, b in zip(pl, pr):
     if not (oka and okb):
         print(f"skip {os.path.basename(a)} (board not found in both)")
         continue
-    # 5x5 search window (v1 used 3x3, too small to converge on blurred corners)
-    ca = cv2.cornerSubPix(ga, ca, (5, 5), (-1, -1), SUBPIX)
-    cb = cv2.cornerSubPix(gb, cb, (5, 5), (-1, -1), SUBPIX)
+    # v2.18: window sized to the board (fixed 5x5 reached the next corner on far boards)
+    ca = refine_corners(ga, ca, *CB)
+    cb = refine_corners(gb, cb, *CB)
     if same_order(ca, cb) is False:  # v2.17.2: OpenCV may return one view's corners rotated 180 deg
         cb = cb[::-1].copy()
         print(f"fix {os.path.basename(a)}: right corner order reversed")
@@ -81,7 +81,7 @@ def load_mono(folder):
         ok, c = cv2.findChessboardCorners(g, CB, flags)
         if not ok:
             continue
-        c = cv2.cornerSubPix(g, c, (5, 5), (-1, -1), SUBPIX)
+        c = refine_corners(g, c, *CB)
         o.append(objp.copy())
         im.append(c.reshape(1, -1, 2).astype(np.float64))
     print(f"{folder}: {len(o)} single-camera views")
