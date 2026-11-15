@@ -26,6 +26,8 @@ for pl in sorted(glob.glob(os.path.join(a.data, 'left', '*.png'))):
         cr = cr[::-1].copy()
     P = np.array([geo.triangulate(*l, *r) for l, r in zip(cl, cr)])
     gaps = [geo.ray_gap_mm(*l, *r) for l, r in zip(cl, cr)]
+    if not np.isfinite(P).all():  # a corner ray that does not triangulate (e.g. behind a camera)
+        print(f'{os.path.basename(pl)}  not triangulated (non-finite points) <-- bad'); out.append((os.path.basename(pl), np.inf, np.inf, np.inf, np.inf, np.nan, cl[:, 1].mean() / gl.shape[0])); continue
     G = P.reshape(a.rows, a.cols, 3)
     d = np.concatenate([np.linalg.norm(np.diff(G, axis=1), axis=2).ravel(), np.linalg.norm(np.diff(G, axis=0), axis=2).ravel()])
     c = P - P.mean(0); n = np.linalg.svd(c)[2][-1]; flat = np.sqrt(np.mean((c @ n) ** 2))
