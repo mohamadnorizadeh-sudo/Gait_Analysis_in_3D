@@ -5,6 +5,19 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## Calibration v6 (2026-11-15) - cameras high, looking down from the front
+Mounting: ~36 cm apart (rig: 367.5 mm), convergence 36.5 deg, rotation 180/180, PSU_MAX_CURRENT=5000 + I2C enabled
+(UPS gauge MAX1704x at 0x36: battery 4.16 V, 96 %).
+**Issue:** first solve was poor (stereo RMS 0.76 px, board squares 25.76 +- 4.05 mm, scale error 3 %).
+`scripts/calib_pairs_check.py` (new, per-pair 3D check) showed 20/39 pairs off; viewed on screen: the board was held
+low and almost FLAT (grazing view from above, ~1 m away). Sharpness and ray gaps were normal - geometry, not blur.
+**Fix:** those 20 pairs moved to `runs/calib_v6/rejected/`; 15 extra low pairs with the board tilted towards the
+cameras (13 good, 2 far ones rejected). Final v6d: 32 pairs, all within 0.5 mm; squares 25.04 +- 0.44 mm,
+scale error 0.17 %, flatness 0.59 mm, RMS 0.51 / 0.50 / stereo 0.36 px. Active on the Pi; v5 kept as backup.
+Note: board positions ~95 cm away in the lower image half stay unreliable; watch ankle depth there.
+Extra single-camera views for the image bottom (coverage 0-4 %) could not be filled (walker tube) and did not change
+the result.
+
 ## v2.17.1 (2026-11-15) - power load + robust frame reader
 **Issue:** UPS supply sagged under load (EXT5V min 4.80 V, p10 4.90 V; throttled=0x50000) and the AI HAT
 dropped out. `camera_shm_writer.py` (user pipeline) used 52 % CPU encoding both cameras at 56 fps while the tracker
