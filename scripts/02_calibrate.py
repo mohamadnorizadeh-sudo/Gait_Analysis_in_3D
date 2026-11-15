@@ -36,6 +36,14 @@ ap.add_argument("--ruler-baseline-mm", type=float, default=0.0, help="lens-to-le
 args = ap.parse_args()
 
 CB = (args.cols, args.rows)
+
+
+def same_order(ca, cb):
+    """Both views must list the corners in the same order. A 9x6 board is only ambiguous by a 180 deg turn,
+    which flips the first->last corner direction; the cameras see the board the same way up (both rot 180)."""
+    da = ca.reshape(-1, 2)[-1] - ca.reshape(-1, 2)[0]
+    db = cb.reshape(-1, 2)[-1] - cb.reshape(-1, 2)[0]
+    return float(np.dot(da, db)) > 0
 objp = object_points(args.cols, args.rows, args.square_mm)
 pl = sorted(glob.glob(f"{args.data}/left/*.png"))
 pr = sorted(glob.glob(f"{args.data}/right/*.png"))
@@ -54,6 +62,9 @@ for a, b in zip(pl, pr):
     # 5x5 search window (v1 used 3x3, too small to converge on blurred corners)
     ca = cv2.cornerSubPix(ga, ca, (5, 5), (-1, -1), SUBPIX)
     cb = cv2.cornerSubPix(gb, cb, (5, 5), (-1, -1), SUBPIX)
+    if same_order(ca, cb) is False:  # v2.17.2: OpenCV may return one view's corners rotated 180 deg
+        cb = cb[::-1].copy()
+        print(f"fix {os.path.basename(a)}: right corner order reversed")
     obj.append(objp.copy())
     il.append(ca.reshape(1, -1, 2).astype(np.float64))
     ir.append(cb.reshape(1, -1, 2).astype(np.float64))

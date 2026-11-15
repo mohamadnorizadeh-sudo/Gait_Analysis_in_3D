@@ -21,6 +21,8 @@ for pl in sorted(glob.glob(os.path.join(a.data, 'left', '*.png'))):
     crit = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.01)
     cl = cv2.cornerSubPix(gl, cl, (5, 5), (-1, -1), crit).reshape(-1, 2)
     cr = cv2.cornerSubPix(gr, cr, (5, 5), (-1, -1), crit).reshape(-1, 2)
+    if np.dot(cl[-1] - cl[0], cr[-1] - cr[0]) < 0:  # v2.17.2: same corner order in both views
+        cr = cr[::-1].copy()
     P = np.array([geo.triangulate(*l, *r) for l, r in zip(cl, cr)])
     gaps = [geo.ray_gap_mm(*l, *r) for l, r in zip(cl, cr)]
     G = P.reshape(a.rows, a.cols, 3)
