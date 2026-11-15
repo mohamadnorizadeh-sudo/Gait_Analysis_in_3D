@@ -134,6 +134,7 @@ class RigidLegSolver:
     prior_sigma_mm: float = 60.0        # temporal prior on depth (gait moves < ~60 mm per frame at 30 fps)
     huber_k: float = 2.0                # outlier rejection for measured depths
     max_prior_age: int = 15             # frames a prior stays usable
+    multistart: bool = True             # v2.19: retry LM from both knee roots when only the knee is unmeasured
     # v2.11 anatomy: the subject faces the cameras, so a bending knee moves the ankle
     # AWAY from the cameras (behind the straight-leg line).  cam_mid = midpoint of the
     # two camera centres (left-camera frame); None disables the rule.
@@ -243,30 +244,61 @@ class RigidLegSolver:
                     res.append((zv[i] - prev[i]) / self.prior_sigma_mm)
             return np.array(res)
 
-        w = np.ones(3)
-        lam = 1e-2
-        for _ in range(25):
+        def lm(z):
+            w = np.ones(3)
+            lam = 1e-2
+            for _ in range(25):
+                for i in range(3):
+                    if zm[i] is not None:
+                        e = abs(z[i] - zm[i]) / sg(i)
+                        w[i] = 1.0 if e <= self.huber_k else self.huber_k / e
+                r0 = residuals(z, w)
+                J = np.empty((r0.size, 3))
+                for k in range(3):
+                    dz = np.zeros(3)
+                    dz[k] = 0.5
+                    J[:, k] = (residuals(z + dz, w) - r0) / 0.5
+                A = J.T @ J
+                g = J.T @ r0
+                step = -np.linalg.solve(A + lam * np.diag(np.diag(A) + 1e-9), g)
+                z_new = np.maximum(z + step, 10.0)
+                z_new = np.array([max(z_new[i], self._t_floor(O[i], R[i])) for i in range(3)])
+                if np.sum(residuals(z_new, w) ** 2) < np.sum(r0 ** 2):
+                    z, lam = z_new, lam * 0.3
+                    if np.max(np.abs(step)) < 0.05:
+                        break
+                else:
+                    lam *= 10.0
+            return z, w
+
+        def cost(zv, w):
+            # fit to bones + measured depths only (no temporal prior): used to compare starts
+            P = [O[i] + zv[i] * R[i] for i in range(3)]
+            c = ((np.linalg.norm(P[0] - P[1]) - self.L_thigh) / self.bone_sigma_mm) ** 2
+            c += ((np.linalg.norm(P[2] - P[1]) - self.L_shin) / self.bone_sigma_mm) ** 2
             for i in range(3):
                 if zm[i] is not None:
-                    e = abs(z[i] - zm[i]) / sg(i)
-                    w[i] = 1.0 if e <= self.huber_k else self.huber_k / e
-            r0 = residuals(z, w)
-            J = np.empty((r0.size, 3))
-            for k in range(3):
-                dz = np.zeros(3)
-                dz[k] = 0.5
-                J[:, k] = (residuals(z + dz, w) - r0) / 0.5
-            A = J.T @ J
-            g = J.T @ r0
-            step = -np.linalg.solve(A + lam * np.diag(np.diag(A) + 1e-9), g)
-            z_new = np.maximum(z + step, 10.0)
-            z_new = np.array([max(z_new[i], self._t_floor(O[i], R[i])) for i in range(3)])
-            if np.sum(residuals(z_new, w) ** 2) < np.sum(r0 ** 2):
-                z, lam = z_new, lam * 0.3
-                if np.max(np.abs(step)) < 0.05:
-                    break
-            else:
-                lam *= 10.0
+                    e = abs(zv[i] - zm[i]) / sg(i)
+                    c += e * e if e <= self.huber_k else 2 * self.huber_k * e - self.huber_k ** 2
+            return float(c)
+
+        z, w = lm(z)
+        if self.multistart and zm[1] is None and zm[0] is not None and zm[2] is not None:
+            # v2.19: knee depth unmeasured (left/right knee keypoints disagree when the knee bends) but hip and
+            # ankle are measured.  The prior (last frame, often a straight leg) can trap LM in the wrong
+            # front/back knee solution, which then rejects the measured hip/ankle as outliers.  Also start from
+            # both knee positions on the hip sphere and keep the start that best fits bones + measurements.
+            best = (cost(z, w), z, w)
+            Hm = O[0] + zm[0] * R[0]
+            roots_k, hit_k = ray_sphere_depths(R[1], Hm - O[1], self.L_thigh)
+            for zk in (np.atleast_1d(roots_k) if hit_k else []):
+                if zk <= 10.0:
+                    continue
+                zc, wc = lm(np.array([zm[0], float(zk), zm[2]], float))
+                cc = cost(zc, wc)
+                if cc < best[0] - 1e-6:
+                    best = (cc, zc, wc)
+            z, w = best[1], best[2]
 
         # ---- exact closed-form projection onto the bone spheres -----------
         def spheres(zk):

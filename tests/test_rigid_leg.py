@@ -221,3 +221,19 @@ def test_ankle_on_lens_root_rejected():
     rays = {n: P / P[2] for n, P in (("hip", H), ("knee", K), ("ankle", A))}
     res = sol.solve(rays, {"hip": 560.0, "knee": 540.0, "ankle": None})
     assert res is None or res.ankle[2] >= 200.0
+
+
+def test_unmeasured_knee_not_trapped_by_straight_prior():
+    """v2.19 (live 2026-11-15): knee keypoints of the two cameras disagree while the knee bends, so the knee has no
+    depth; hip + ankle are measured; the previous frame was a straight leg.  (Live, LM stayed near the straight-leg
+    knee and read ~10 deg for a ~60 deg bend; this idealised rig does not reproduce the trap - regression guard.)"""
+    geo, rng = make_geo(), np.random.default_rng(7)
+    solver = RigidLegSolver(L_THIGH, L_SHIN, depth_sigma_fn=lambda z: geo.depth_sigma(z, 1.5))
+    run_solver(geo, leg_pose(178.0, np.eye(3)), rng, px_noise=0.0, solver=solver)    # straight leg -> prior
+    errs = []
+    for _ in range(5):
+        res = run_solver(geo, leg_pose(120.0, np.eye(3)), rng, px_noise=0.3, drop=("knee",), solver=solver)
+        errs.append(abs(res.angle_deg - 120.0))
+        solver._prev = {"hip": leg_pose(178.0, np.eye(3))[0], "knee": leg_pose(178.0, np.eye(3))[1],
+                        "ankle": leg_pose(178.0, np.eye(3))[2]}       # keep the straight prior every frame
+    assert max(errs) < 6.0, errs
