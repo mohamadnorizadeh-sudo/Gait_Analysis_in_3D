@@ -5,6 +5,24 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## Validation 2026-11-15 (v7c, high mounting) + v2.19 trial (not deployed, reverted)
+Session `runs/session_20261115_094925`, phone IMG_4841 on the left. Clock: video = system + 2.25 s (left-ankle
+height curves, r = 0.96). Walking left the phone's view, so only standing and one long left bend could be compared.
+| Segment | Reference | System |
+|---|---|---|
+| Standing (4-12 s) | 6-7 deg | 6-10 deg (OK) |
+| Bend, knee ~63 deg (21.5-25 s) | 60-65 | **6-27** (brief 36-45) |
+| Knee lowering ~30-45 (25.5-26.5 s) | 29-37 | **55-63** |
+**Why:** while the knee bends, the left/right knee keypoints disagree by 80-100 mm (cameras 37 cm apart, 38 deg
+convergence, conf 0.86-0.98), above `ray_gap_mm` = 80 -> knee unmatched; hip (~400 mm) and ankle (~900 mm) are
+measured. With the standing thigh (386 mm) the knee ray meets the hip sphere only at ~170 or ~690 mm, while the knee
+is at ~545 mm in frames where it does match: in the bent pose the keypoints no longer fit the standing bone length,
+so the fixed-length solver has no correct root and picks the straight-leg one (~10 deg).
+**v2.19 trial:** multi-start LM from both knee roots (replay of this session): output unchanged - neither root is
+right. Reverted; nothing changed on the live system.
+**Conclusion:** same as 12 Nov - a front-facing stereo pair cannot measure sagittal knee flexion reliably once the
+knee bends. Next: a side-view camera (decision with the user).
+
 ## Calibration v7c + v2.18 (2026-11-15) - camera moved; far-board corner bug
 **Issue 1 - shins far too long** with v6d (stereo L/R 538/468 mm vs tape 410; old rig 442/423).
 Ankles stand ~1.0-1.15 m from the cameras (feet behind the knees while leaning on the walker).
