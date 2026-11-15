@@ -6,13 +6,17 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 ---
 
 ## v2.17.1 (2026-11-15) - power load + robust frame reader
-**Issue:** UPS supply sagged under load (EXT5V min 4.80 V, median 5.03 V; throttled=0x50000) and the AI HAT
+**Issue:** UPS supply sagged under load (EXT5V min 4.80 V, p10 4.90 V; throttled=0x50000) and the AI HAT
 dropped out. `camera_shm_writer.py` (user pipeline) used 52 % CPU encoding both cameras at 56 fps while the tracker
-uses ~11 fps. After restarting it, the live view crashed on one torn shared-memory frame (msgpack incomplete input).
-**Changes:** camera_shm_writer.py FrameRate 56 -> 30 (backup `camera_shm_writer.py.bak_56fps_20261115`), now 12 % CPU.
-`ShmStereoSource.read()` skips unreadable snapshots instead of crashing.
-**Left to the user (system settings):** `PSU_MAX_CURRENT=5000` in the EEPROM config, enable I2C for the UPS monitor,
-optionally `dtparam=pciex1_gen=2` if the AI HAT keeps disconnecting.
+uses ~11 fps.
+**Try 1 - FrameRate 56 -> 30: reverted.** Two free-running cameras at 30 fps lock into a constant phase offset larger
+than MAX_SYNC_ERROR_MS, so `get_synced_pair` never returned a pair and nothing was published.
+**Fix:** capture stays at 56 fps (sync unchanged); only every 2nd synced pair is JPEG-encoded/published (~28 fps).
+Original kept as `camera_shm_writer.py.bak_56fps_20261115`. Writer CPU 52 % -> 37 %; with live view + AI HAT running:
+EXT5V min 4.80 -> **4.93 V**, p10 4.90 -> **4.98 V**, median 5.03 V.
+`ShmStereoSource.read()` now skips unreadable (torn) snapshots instead of crashing.
+**Left to the user (system settings, need sudo):** `PSU_MAX_CURRENT=5000` in the EEPROM config, enable I2C for the UPS
+monitor, optionally `dtparam=pciex1_gen=2` if the AI HAT keeps disconnecting.
 
 ## Status 2026-11-12 (end of day) - next steps
 * Validation (`validation/README.md`): front-facing cameras under-read knee flexion: left holds -14/-21/-2 deg,
