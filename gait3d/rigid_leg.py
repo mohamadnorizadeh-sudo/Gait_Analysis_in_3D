@@ -289,6 +289,7 @@ class RigidLegSolver:
             # front/back knee solution, which then rejects the measured hip/ankle as outliers.  Also start from
             # both knee positions on the hip sphere and keep the start that best fits bones + measurements.
             best = (cost(z, w), z, w)
+            self.last_starts = [("prior", best[0], z.copy())]
             Hm = O[0] + zm[0] * R[0]
             roots_k, hit_k = ray_sphere_depths(R[1], Hm - O[1], self.L_thigh)
             for zk in (np.atleast_1d(roots_k) if hit_k else []):
@@ -296,6 +297,7 @@ class RigidLegSolver:
                     continue
                 zc, wc = lm(np.array([zm[0], float(zk), zm[2]], float))
                 cc = cost(zc, wc)
+                self.last_starts.append((f"knee{zk:.0f}", cc, zc.copy()))
                 if cc < best[0] - 1e-6:
                     best = (cc, zc, wc)
             z, w = best[1], best[2]
