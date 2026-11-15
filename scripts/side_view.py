@@ -53,7 +53,7 @@ def annotate(img, name):
                     if ok[k]:
                         cv2.circle(img, pt, 6, COL[side], -1)
                 status += f" {side}:" + ''.join('HKA'[k] if ok[k] else '-' for k in range(3))
-                status += '(%.2f)' % min(p.conf[j] for j in ix)
+                status += '(%.2f y%s)' % (min(p.conf[j] for j in ix), '/'.join('%.0f' % (100 * p.xy[j][1] / h) for j in ix))
     cv2.putText(img, name, (8, 26), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
     return status
 
