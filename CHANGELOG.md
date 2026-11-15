@@ -5,6 +5,27 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## Calibration v7c + v2.18 (2026-11-15) - camera moved; far-board corner bug
+**Issue 1 - shins far too long** with v6d (stereo L/R 538/468 mm vs tape 410; old rig 442/423).
+Ankles stand ~1.0-1.15 m from the cameras (feet behind the knees while leaning on the walker).
+**Issue 2 - far boards bent (v2.18 fix):** in the 640x360 stream a board ~1 m away has 6-9 px squares; the fixed
+11x11 px `cornerSubPix` window reached the neighbouring corners (boards triangulated bent by up to 39 mm). The
+window is now 40 % of the smallest square (2-5 px half-size) in `02_calibrate.py` and `calib_pairs_check.py`.
+(A first guess, a 180 deg corner-order flip between the views - v2.17.2 - changed no pair; kept only as a guard.)
+**Issue 3 - a camera moved since 14 Nov:** today's near boards (0.54-0.69 m) read 26.0-26.8 mm against v6d, while
+yesterday's boards at the same place read 24.9-25.2 mm. Adding today's far boards to the v6d set made the solve
+inconsistent (stereo RMS 0.36 -> 0.72 px, baseline 371 -> 388 mm).
+**Fix - v7c from today's boards only:** 37 pairs (far 0.86-1.12 m, middle, near, hip height), yesterday's mono
+views for the intrinsics. Stereo RMS 0.30 px, RMS L/R 0.37/0.28, squares 25.09 +- 0.45 mm, scale error 0.35 %,
+flatness 0.78 mm, all 37 pairs within 0.5 mm; baseline 373.1 mm, convergence 38.2 deg (was 36.5).
+Hold-out check: 8 of 10 hip-height boards, not used by v7, were within 0.5 mm; the 2 highest have one corner that
+lands behind a camera (returns NaN, which the tracker already treats as not measured). Active on the Pi; v6d kept.
+**Leg lengths (profile):** L thigh/shin 386/462, R 362/426 mm (session_20261115_083639, first 6 s). A second
+standing recording (feet ~10 cm further back) gave R shin ~500: its right-ankle ray gap was 50 mm (27 mm in the
+first), i.e. the two cameras did not see the same ankle point. Keypoint ray gaps of 20-60 mm at hip/knee are normal
+for this wide, converging rig (as in v2.3), so bone lengths from direct triangulation carry ~5-10 % noise.
+**Lesson:** the camera mounts move easily - recalibrate (or run a board check) after any knock.
+
 ## Calibration v6 (2026-11-15) - cameras high, looking down from the front
 Mounting: ~36 cm apart (rig: 367.5 mm), convergence 36.5 deg, rotation 180/180, PSU_MAX_CURRENT=5000 + I2C enabled
 (UPS gauge MAX1704x at 0x36: battery 4.16 V, 96 %).
