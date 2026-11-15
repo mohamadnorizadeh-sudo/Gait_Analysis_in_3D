@@ -5,6 +5,26 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.0 (2026-11-15) - side cameras, 2D sagittal knee angle (not yet validated)
+**Why:** front stereo cannot measure a bent knee (validation 15 Nov). Cameras moved to 25 cm arms on the
+rear posts, one per side, ~70 cm high, tilted down 5-10 deg (cameras 90 cm apart). Standing: hip/knee/ankle of
+both legs found in both cameras, confidence 0.73-0.98.
+**First recording** (`runs/side_20261115_122209`, held bends, no plane calibration yet): every camera sees both
+legs, the L/R labels were right, but per leg the two cameras disagreed by 25-37 deg, the NEAR camera always lower
+(L: cam0 14/37/57 vs cam1 40/71/90; R: cam1 26/31/45 vs cam0 65/69/82). Fisheye undistortion changed < 1 deg.
+Simulation: camera slant changes angles both ways and too little to explain this. Likely cause (also Fable's
+review): at ~35 cm the near camera's HIP keypoint slides forward with the knee (thigh stays "vertical").
+**New code:**
+* `gait3d/side2d.py` - per-camera homography to the leg's sagittal plane (from a checkerboard held flat on the
+  leg), 2D flexion, confidence / segment-length / jump gates, short hold, One-Euro filter, standing offset
+  (keypoint mode only), optional snapping of hip/knee/ankle to white 2 cm tape markers (keypoint-guided).
+* `scripts/side_plane_calib.py` (board -> `config/side_planes.json`, prints camera slant),
+  `scripts/07_side_session.py` + `start_side_session.sh`/`stop_side_session.sh` (`config/side.env`): live
+  Pi screen + web dashboard + raw video/keypoints/angles recording; `scripts/side_replay.py` (offline, compares
+  both cameras per leg); `scripts/side_view.py --record`.
+* Tests: homography recovers the true angle for slanted cameras (+-0.5 deg); end-to-end synthetic recording
+  with tape markers: 59 deg for a true 60 deg hold, 5 deg standing (uncalibrated slanted camera: 64 deg).
+
 ## Validation 2026-11-15 (v7c, high mounting) + v2.19 trial (not deployed, reverted)
 Session `runs/session_20261115_094925`, phone IMG_4841 on the left. Clock: video = system + 2.25 s (left-ankle
 height curves, r = 0.96). Walking left the phone's view, so only standing and one long left bend could be compared.
