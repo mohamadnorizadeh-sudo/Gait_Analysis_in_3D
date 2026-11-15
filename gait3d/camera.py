@@ -254,8 +254,9 @@ class ShmStereoSource:
                 imgs = [cv2.imdecode(np.frombuffer(p[k], np.uint8), cv2.IMREAD_COLOR) for k in self.keys]
                 if all(im is not None for im in imgs):
                     break
-            except (ValueError, KeyError, TypeError, msgpack.exceptions.ExtraData,
-                    msgpack.exceptions.FormatError, msgpack.exceptions.StackError):
+            except TimeoutError:
+                raise
+            except Exception:  # noqa: BLE001  torn snapshot: msgpack/JPEG decode error
                 pass
             time.sleep(self.poll_s)
         else:

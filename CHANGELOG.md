@@ -5,6 +5,15 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v2.17.1 (2026-11-15) - power load + robust frame reader
+**Issue:** UPS supply sagged under load (EXT5V min 4.80 V, median 5.03 V; throttled=0x50000) and the AI HAT
+dropped out. `camera_shm_writer.py` (user pipeline) used 52 % CPU encoding both cameras at 56 fps while the tracker
+uses ~11 fps. After restarting it, the live view crashed on one torn shared-memory frame (msgpack incomplete input).
+**Changes:** camera_shm_writer.py FrameRate 56 -> 30 (backup `camera_shm_writer.py.bak_56fps_20261115`), now 12 % CPU.
+`ShmStereoSource.read()` skips unreadable snapshots instead of crashing.
+**Left to the user (system settings):** `PSU_MAX_CURRENT=5000` in the EEPROM config, enable I2C for the UPS monitor,
+optionally `dtparam=pciex1_gen=2` if the AI HAT keeps disconnecting.
+
 ## Status 2026-11-12 (end of day) - next steps
 * Validation (`validation/README.md`): front-facing cameras under-read knee flexion: left holds -14/-21/-2 deg,
   right holds -36/-20/-77 deg, walking swing peaks about half. Detection is fine (conf 0.9-1.0); the error is the
