@@ -246,8 +246,20 @@ class ShmStereoSource:
     def read(self, timeout=1.0):
         import cv2
         import msgpack
-        p = msgpack.unpackb(self._snapshot())
-        imgs = [cv2.imdecode(np.frombuffer(p[k], np.uint8), cv2.IMREAD_COLOR) for k in self.keys]
+        # v2.17.1: a torn/partial snapshot (seen right after camera_shm_writer restarted) must not
+        # kill the program - skip it and take the next frame.
+        for attempt in range(50):
+            try:
+                p = msgpack.unpackb(self._snapshot())
+                imgs = [cv2.imdecode(np.frombuffer(p[k], np.uint8), cv2.IMREAD_COLOR) for k in self.keys]
+                if all(im is not None for im in imgs):
+                    break
+            except (ValueError, KeyError, TypeError, msgpack.exceptions.ExtraData,
+                    msgpack.exceptions.FormatError, msgpack.exceptions.StackError):
+                pass
+            time.sleep(self.poll_s)
+        else:
+            raise TimeoutError("shared memory keeps returning unreadable frames")
         codes = {90: cv2.ROTATE_90_CLOCKWISE, 180: cv2.ROTATE_180, 270: cv2.ROTATE_90_COUNTERCLOCKWISE}
         imgs = [cv2.rotate(im, codes[r]) if r in codes else im for im, r in zip(imgs, self.rot)]
         ts = int(p.get("ts0", time.monotonic_ns()))
