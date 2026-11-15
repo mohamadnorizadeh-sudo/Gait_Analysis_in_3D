@@ -23,6 +23,7 @@ ap.add_argument('--rot1', type=int, default=0)
 ap.add_argument('--no-pose', action='store_true')
 ap.add_argument('--hef', default='/usr/share/hailo-models/yolov8m_pose_h10.hef')
 ap.add_argument('--seconds', type=float, default=1800)
+ap.add_argument('--record', default='', help='folder: save raw cam0|cam1 video + keypoints.jsonl')
 a = ap.parse_args()
 
 ROT = {0: None, 90: cv2.ROTATE_90_CLOCKWISE, 180: cv2.ROTATE_180, 270: cv2.ROTATE_90_COUNTERCLOCKWISE}
@@ -35,10 +36,13 @@ JOINTS = {'L': (11, 13, 15), 'R': (12, 14, 16)}
 COL = {'L': (255, 160, 0), 'R': (0, 120, 255)}
 
 
-def annotate(img, name):
+def annotate(img, name, people_out=None):
     status = name
     if hp is not None:
-        p = best_person(hp([img])[0])
+        people = hp([img])[0]
+        if people_out is not None:
+            people_out.extend(people)
+        p = best_person(people)
         if p is None:
             status += ' no person'
         else:
@@ -60,11 +64,28 @@ def annotate(img, name):
 
 last_print, t_end = 0.0, time.time() + a.seconds
 out = os.path.join(os.path.dirname(__file__), '..', 'runs', 'side_view.jpg')
+import json, signal
+STOP = []
+signal.signal(signal.SIGTERM, lambda *_: STOP.append(1))
+signal.signal(signal.SIGINT, lambda *_: STOP.append(1))
+rec_v = rec_k = None
+if a.record:
+    os.makedirs(a.record, exist_ok=True)
+    rec_k = open(os.path.join(a.record, 'keypoints.jsonl'), 'w')
+pj = lambda ps: [{'xy': [[round(float(x), 1), round(float(y), 1)] for x, y in p.xy], 'c': [round(float(c), 3) for c in p.conf], 's': round(float(p.score), 3)} for p in ps]
 with ShmStereoSource() as src:
-    while time.time() < t_end:
-        _, i0, i1, _ = src.read()
+    while time.time() < t_end and not STOP:
+        t, i0, i1, _ = src.read()
         i0, i1 = rot(i0, a.rot0), rot(i1, a.rot1)
-        s0, s1 = annotate(i0, 'cam0'), annotate(i1, 'cam1')
+        if a.record:
+            raw = np.hstack([i0, i1])
+            if rec_v is None:
+                rec_v = cv2.VideoWriter(os.path.join(a.record, 'raw.mp4'), cv2.VideoWriter_fourcc(*'mp4v'), 10, (raw.shape[1], raw.shape[0]))
+            rec_v.write(raw)
+        p0, p1 = [], []
+        s0, s1 = annotate(i0, 'cam0', p0), annotate(i1, 'cam1', p1)
+        if rec_k is not None:
+            rec_k.write(json.dumps({'t': round(t, 4), 'cam0': pj(p0), 'cam1': pj(p1)}) + '\n')
         h = max(i0.shape[0], i1.shape[0])
         pad = lambda im: cv2.copyMakeBorder(im, 0, h - im.shape[0], 0, 0, cv2.BORDER_CONSTANT)
         view = np.hstack([pad(i0), np.full((h, 6, 3), 255, np.uint8), pad(i1)])
@@ -76,5 +97,9 @@ with ShmStereoSource() as src:
             last_print = time.time()
             print(f'{s0} | {s1}', flush=True)
             cv2.imwrite(out, view)
+if rec_v is not None:
+    rec_v.release()
+if rec_k is not None:
+    rec_k.close()
 if hp is not None:
     hp.close()
