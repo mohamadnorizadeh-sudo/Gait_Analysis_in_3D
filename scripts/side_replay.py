@@ -61,14 +61,17 @@ print(a.rec, len(rows), 'frames', round(per[-1][0], 1), 's | planes:', sorted(pm
       '| markers' if a.markers else '', '| offset', tr.offset)
 med = lambda v: '%5.0f' % np.median(v) if v else '    -'
 if a.phases:
-    print('phase      cam0L cam0R cam1L cam1R | out L out R')
+    print('phase      cam0L cam0R cam1L cam1R | out L out R | valid% L R | raw peak L R')
     for ph in a.phases.split(','):
         name, rng = ph.split(':')
         lo, hi = map(float, rng.split('-'))
         sel = [p for p in per if lo <= p[0] < hi]
         cols = [med([p[1][(c, l)] for p in sel if (c, l) in p[1]]) for c in ('cam0', 'cam1') for l in 'LR']
         outs = [med([p[2][l] for p in sel if p[2][l] is not None]) for l in 'LR']
-        print(f'{name:9s} ' + ' '.join(cols) + ' | ' + ' '.join(outs))
+        src_c = {l: src[l] for l in 'LR'}
+        valid = [100.0 * sum((src_c[l], l) in p[1] for p in sel) / max(1, len(sel)) for l in 'LR']
+        peak = [max([p[1][(src_c[l], l)] for p in sel if (src_c[l], l) in p[1]] or [float('nan')]) for l in 'LR']
+        print(f'{name:9s} ' + ' '.join(cols) + ' | ' + ' '.join(outs) + ' | %5.0f %3.0f | %5.0f %3.0f' % (*valid, *peak))
 if a.timeline:
     line = []
     for b in np.arange(0, per[-1][0], a.timeline):
