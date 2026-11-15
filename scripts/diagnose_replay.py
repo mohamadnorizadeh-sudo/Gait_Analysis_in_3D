@@ -36,7 +36,6 @@ ap.add_argument('--adapt', type=float, default=0.0)
 ap.add_argument('--fb-bias', type=float, default=0.05)
 ap.add_argument('--adapt-max-flex', type=float, default=20.0)
 ap.add_argument('--median', type=int, default=0)
-ap.add_argument('--multistart', type=int, default=1, help='v2.19 knee multi-start (0 = old solver)')
 ap.add_argument('--probe', default='', help='lo-hi:side  print keypoints & 3D per frame')
 ap.add_argument('--phases', default='stand:136-145,Lhold:148-160,Ltwist:161-169,Rhold:170-184,Rtwist:185-198,walk:199-226')
 a = ap.parse_args()
@@ -46,8 +45,6 @@ if a.lengths:
     lt, ls, rt, rs = map(float, a.lengths.split(','))
     prof = SubjectProfile(lt, ls, rt, rs, method='manual')
 tr = GaitTracker(load_geometry(a.calib), prof, TrackerConfig(anatomy=a.anatomy, stereo_first=a.stereo_first, adapt_lengths=a.adapt, fallback_bias=a.fb_bias, adapt_max_flex=a.adapt_max_flex, **({'max_rate_dps': a.max_rate} if a.max_rate else {})))
-for _sv in tr.solvers.values():
-    _sv.multistart = bool(a.multistart)
 if a.swap_ratio is not None:
     tr.identity.swap_ratio = a.swap_ratio
 KI = {'L': (13, 15), 'R': (14, 16)}
