@@ -5,6 +5,16 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## Validation 2026-11-16 (v3.0.3, left leg, cam0 + plane homography + 3 tapes) - first usable result
+Session `runs/side_session_20261116_111052`, phone IMG_4862 (tripod, left side; reference = same three tapes
+tracked in the phone video, shank tape instead of ankle). Held bends, median of each hold, phone -> system:
+38->32, 44->38, 52->50, 86->97, 84->92, 81->74..83, ~100->113, ~101->108..117; standing 7-8 -> 10 (when all three
+tapes are found). So within ~6 deg up to ~50 deg, over-reading by 8-13 deg at 85-100 deg. Pairing by order of
+the holds (clocks ~14 s apart), not frame-exact.
+Problems: the shank tape faces sideways and cam0 views the leg from the front-left, so it is often not seen
+while standing (status `markers HK-` in 443 of ~1000 frames with a person; only 344 frames fully valid).
+Walking not validated. Right leg not calibrated yet.
+
 ## v3.0.1-v3.0.3 (2026-11-16) - first side-camera test with tape markers (left leg)
 * Board on the left leg: cam0 slant 36 deg (33 sideways, 19 down), 58 cm, fit 0.02 cm -> cam0 really views the
   leg from the front-left; the homography raised its bend readings by ~8 deg.
