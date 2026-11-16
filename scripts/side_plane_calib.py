@@ -16,6 +16,7 @@ which tells you whether to turn a camera.
 import argparse, os, sys, time
 import cv2
 import numpy as np
+cv2.setNumThreads(1)   # v3.0.1: full-CPU corner search dropped the Pi (UPS) off the network twice
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from gait3d.side2d import PlaneMap
 
@@ -25,7 +26,7 @@ ap.add_argument('--out', default='config/side_planes.json')
 ap.add_argument('--calib', default='stereo_calibration.npz', help='old fisheye intrinsics (K_l=cam0, K_r=cam1)')
 ap.add_argument('--calib-rot', type=int, default=180, help='rotation the intrinsics were captured with vs now')
 ap.add_argument('--square-mm', type=float, default=25.0)
-ap.add_argument('--frames', type=int, default=15)
+ap.add_argument('--frames', type=int, default=8)
 ap.add_argument('--check', action='store_true')
 ap.add_argument('--images', nargs=2, metavar=('CAM0_IMG', 'CAM1_IMG'), help='offline: use two saved images instead of the cameras')
 a = ap.parse_args()
@@ -49,8 +50,9 @@ if not a.leg:
 
 def find(gray):
     for size in ((9, 6), (6, 9)):
-        ok, cn = cv2.findChessboardCornersSB(gray, size, cv2.CALIB_CB_NORMALIZE_IMAGE | cv2.CALIB_CB_EXHAUSTIVE)
+        ok, cn = cv2.findChessboardCorners(gray, size, cv2.CALIB_CB_ADAPTIVE_THRESH | cv2.CALIB_CB_NORMALIZE_IMAGE | cv2.CALIB_CB_FAST_CHECK)
         if ok:
+            cn = cv2.cornerSubPix(gray, cn, (3, 3), (-1, -1), (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.01))
             cols, rows = size
             g = np.array([[x, y] for y in range(rows) for x in range(cols)], float) * a.square_mm / 10.0
             return cn.reshape(-1, 2).astype(float), g
@@ -66,7 +68,7 @@ else:
         for _ in range(a.frames):
             _, i0, i1, _ = src.read()
             frames.append((i0, i1))
-            time.sleep(0.12)
+            time.sleep(0.25)
 os.makedirs('runs/side_planes', exist_ok=True)
 for ci, cam in enumerate(('cam0', 'cam1')):
     Hs, res, slant = [], [], []
