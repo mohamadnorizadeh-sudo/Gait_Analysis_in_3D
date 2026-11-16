@@ -119,13 +119,15 @@ def white_blobs(img, min_area=12, max_area=3000, v_min=165, s_max=70, dark_ring=
         if max(w, h) > 2.5 * min(w, h) or a < 0.45 * w * h:       # tape is a compact square
             continue
         if dark_ring:
-            r = int(max(w, h) * 0.9) + 4
+            # v3.0.5: thin ring (5 px) and "at least 45 % dark" - a wide ring around a 4x4 cm marker reached
+            # the bright background beside the leg and rejected every hip/knee marker (16 Nov).
+            r = 5
             H_, W_ = m.shape
             y0, y1, x0, x1 = max(0, y - r), min(H_, y + h + r), max(0, x - r), min(W_, x + w + r)
-            patch = hsv[y0:y1, x0:x1, 2].astype(float)
+            patch = hsv[y0:y1, x0:x1, 2]
             ring = np.ones(patch.shape, bool)
-            ring[max(0, y - y0 - 2):y - y0 + h + 2, max(0, x - x0 - 2):x - x0 + w + 2] = False
-            if not ring.any() or np.median(patch[ring]) > ring_v_max:
+            ring[y - y0:y - y0 + h, x - x0:x - x0 + w] = False
+            if not ring.any() or np.mean(patch[ring] <= ring_v_max) < 0.45:
                 continue
         out.append((float(cen[i][0]), float(cen[i][1]), float(a)))
     return out
