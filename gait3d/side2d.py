@@ -103,8 +103,10 @@ class PlaneMap:
 # ---------------------------------------------------------------------- #
 # tape markers (keypoint-guided)
 # ---------------------------------------------------------------------- #
-def white_blobs(img, min_area=25, max_area=900, v_min=165, s_max=70):
-    """Small bright, unsaturated, compact blobs (2 cm white tape squares) -> list of (x, y, area)."""
+def white_blobs(img, min_area=12, max_area=900, v_min=165, s_max=70, dark_ring=True, ring_v_max=110):
+    """Small bright, unsaturated, compact blobs (2 cm white tape squares) -> list of (x, y, area).
+    v3.0.2: with dark_ring, a blob must sit on dark trousers (median brightness of a ring around it
+    <= ring_v_max) - the walls and floor gave many false white blobs (16 Nov)."""
     import cv2
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
     m = ((hsv[..., 2] >= v_min) & (hsv[..., 1] <= s_max)).astype(np.uint8)
@@ -116,15 +118,27 @@ def white_blobs(img, min_area=25, max_area=900, v_min=165, s_max=70):
             continue
         if max(w, h) > 2.5 * min(w, h) or a < 0.45 * w * h:       # tape is a compact square
             continue
+        if dark_ring:
+            r = int(max(w, h) * 0.9) + 4
+            H_, W_ = m.shape
+            y0, y1, x0, x1 = max(0, y - r), min(H_, y + h + r), max(0, x - r), min(W_, x + w + r)
+            patch = hsv[y0:y1, x0:x1, 2].astype(float)
+            ring = np.ones(patch.shape, bool)
+            ring[max(0, y - y0 - 2):y - y0 + h + 2, max(0, x - x0 - 2):x - x0 + w + 2] = False
+            if not ring.any() or np.median(patch[ring]) > ring_v_max:
+                continue
         out.append((float(cen[i][0]), float(cen[i][1]), float(a)))
     return out
 
 
-def snap_to_markers(img, pts, radius_px=45.0, blobs=None):
+def snap_to_markers(img, pts, radius_px=45.0, blobs=None, flags=None):
     """Move each keypoint (hip, knee, ankle) onto the nearest white tape blob within radius.
-    Returns (points, n_snapped).  A joint without a blob keeps the keypoint (and counts as unsnapped)."""
+    Returns (points, n_snapped).  A joint without a blob keeps the keypoint (and counts as unsnapped).
+    flags (list) receives True/False per joint."""
     blobs = white_blobs(img) if blobs is None else blobs
     out, used, n = np.array(pts, float).copy(), set(), 0
+    if flags is not None:
+        flags[:] = [False, False, False]
     for j, p in enumerate(out):
         best, bd = None, radius_px
         for k, (x, y, _a) in enumerate(blobs):
@@ -135,6 +149,8 @@ def snap_to_markers(img, pts, radius_px=45.0, blobs=None):
             used.add(best)
             out[j] = blobs[best][:2]
             n += 1
+            if flags is not None:
+                flags[j] = True
     return out, n
 
 
@@ -144,7 +160,7 @@ def snap_to_markers(img, pts, radius_px=45.0, blobs=None):
 @dataclass
 class SideConfig:
     kp_conf: float = 0.5
-    len_tol: float = 0.25            # segment length gate vs standing lengths (fraction)
+    len_tol: float = 0.5             # segment length gate vs standing lengths (v3.0.2: 0.25 dropped every bend)
     max_step_deg: float = 25.0       # per-frame jump gate (~10 fps)
     hold_s: float = 0.25             # keep the last good value this long, then "--"
     filter_min_cutoff: float = 1.5
@@ -154,8 +170,11 @@ class SideConfig:
     neutral_max_spread: float = 6.0
     source: Dict[str, str] = field(default_factory=lambda: dict(DEFAULT_SOURCE))
     markers: bool = False            # snap hip/knee/ankle to white tape markers (needs images)
-    marker_radius_px: float = 45.0
+    marker_radius_px: float = 70.0
     markers_required: int = 3        # frames with fewer snapped joints are rejected in marker mode
+    # v3.0.2: which joints must come from tape (others fall back to the pose keypoint).  The ankle
+    # tape at the trouser hem is often hidden from the near camera; the ankle keypoint is reliable.
+    marker_joints: str = "HK"
     # standing offset: subtract the quiet-stand angle so standing reads 0.  None = automatic:
     # ON for pose keypoints (they sit on the surface, not the joint centre), OFF with tape markers
     # on the bony landmarks (the angle is anatomical; stroke patients may really stand flexed).
@@ -252,11 +271,12 @@ class SideTracker:
                 pts = kp[0]
                 if c.markers:
                     img = (images or {}).get(cam)
-                    nsnap = 0
+                    fl = [False, False, False]
                     if img is not None:
-                        pts, nsnap = snap_to_markers(img, pts, c.marker_radius_px)
-                    if nsnap < c.markers_required:
-                        o.status, o.pts_px = f"markers {nsnap}/3", pts
+                        pts, _ = snap_to_markers(img, pts, c.marker_radius_px, flags=fl)
+                    need = [j for j, ch in enumerate("HKA") if ch in c.marker_joints]
+                    if not all(fl[j] for j in need):
+                        o.status, o.pts_px = "markers " + "".join("HKA"[j] if fl[j] else "-" for j in range(3)), pts
                         out[s] = o
                         continue
                 o.pts_px = pts

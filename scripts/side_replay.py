@@ -48,8 +48,9 @@ for r in rows:
                 continue
             pts = kp[0]
             if imgs is not None:
-                pts, n = snap_to_markers(imgs[cam], pts, cfg.marker_radius_px)
-                if n < 3:
+                fl = [False] * 3
+                pts, n = snap_to_markers(imgs[cam], pts, cfg.marker_radius_px, flags=fl)
+                if not all(fl[j] for j, ch in enumerate('HKA') if ch in cfg.marker_joints):
                     continue
             f = flexion_2d(*pm.to_plane(cam, leg, pts))
             if f is not None:
