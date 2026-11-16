@@ -5,6 +5,17 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.0.4-v3.0.5 (2026-11-16, evening) - both legs calibrated; final recording NOT yet analysed
+* Right-leg board: cam1 slant 46 deg, fit 0.03 cm, board only 25 cm away (user stood off-centre; left was 58 cm).
+* 4x4 cm markers on both legs (hip, lateral knee, front-outer shin); blob area limit raised (v3.0.4).
+* v3.0.5: a bystander behind the empty walker was measured (R 63 deg) -> minimum leg size, nearest person wins.
+* Final recording `runs/side_session_20261116_120108` (both legs, holds + walking) is on the Pi. The phone
+  reference (IMG_4865) is extracted: `validation/ref_20261116_IMG_4865.csv` (standing 4-5 deg; left holds
+  ~45/46/46, 63/65/64, 74/85/88; right holds 55-60 ... 89). The Pi was unreachable afterwards (desktop bridge
+  offline), so the comparison is still open:
+  `python3 scripts/side_compare.py runs/side_session_20261116_120108 validation/ref_20261116_IMG_4865.csv --leg L --ref-window 0-75`
+  (new script: aligns the clocks by correlation, compares every held bend).
+
 ## Validation 2026-11-16 (v3.0.3, left leg, cam0 + plane homography + 3 tapes) - first usable result
 Session `runs/side_session_20261116_111052`, phone IMG_4862 (tripod, left side; reference = same three tapes
 tracked in the phone video, shank tape instead of ankle). Held bends, median of each hold, phone -> system:
