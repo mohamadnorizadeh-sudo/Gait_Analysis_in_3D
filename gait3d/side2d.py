@@ -103,7 +103,7 @@ class PlaneMap:
 # ---------------------------------------------------------------------- #
 # tape markers (keypoint-guided)
 # ---------------------------------------------------------------------- #
-def white_blobs(img, min_area=12, max_area=900, v_min=165, s_max=70, dark_ring=True, ring_v_max=110):
+def white_blobs(img, min_area=12, max_area=3000, v_min=165, s_max=70, dark_ring=True, ring_v_max=110):
     """Small bright, unsaturated, compact blobs (2 cm white tape squares) -> list of (x, y, area).
     v3.0.2: with dark_ring, a blob must sit on dark trousers (median brightness of a ring around it
     <= ring_v_max) - the walls and floor gave many false white blobs (16 Nov)."""
