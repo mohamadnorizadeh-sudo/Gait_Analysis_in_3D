@@ -106,3 +106,16 @@ def test_marker_snapping_moves_keypoints_onto_tape():
     from gait3d.side2d import snap_to_markers
     pts, n = snap_to_markers(img, kp)
     assert n == 3 and np.abs(pts - np.array(true)).max() < 1.0
+
+
+def test_bystander_in_background_is_ignored():
+    from gait3d.side2d import leg_keypoints
+    def person(scale, score):
+        xy = np.zeros((17, 2)); c = np.full(17, 0.95)
+        for j, y in zip((11, 13, 15), (100, 100 + 150 * scale, 100 + 290 * scale)):
+            xy[j] = (180, y)
+        return {"xy": xy.tolist(), "c": c.tolist(), "s": score}
+    far, near = person(0.3, 0.99), person(1.0, 0.80)
+    assert leg_keypoints([far], "L", 170.0) is None
+    kp = leg_keypoints([far, near], "L", 170.0)
+    assert abs(kp[0][2][1] - 390) < 1

@@ -164,6 +164,7 @@ def snap_to_markers(img, pts, radius_px=45.0, blobs=None, flags=None, prev=None)
 @dataclass
 class SideConfig:
     kp_conf: float = 0.5
+    min_leg_px: float = 170.0        # hip-knee-ankle chain; the user's near leg is ~300 px, a bystander < 120
     len_tol: float = 0.5             # segment length gate vs standing lengths (v3.0.2: 0.25 dropped every bend)
     max_step_deg: float = 25.0       # per-frame jump gate (~10 fps)
     hold_s: float = 0.25             # keep the last good value this long, then "--"
@@ -196,15 +197,19 @@ class LegOut:
     pts_px: Optional[np.ndarray] = None    # hip, knee, ankle in the source image
 
 
-def leg_keypoints(people: List, side: str):
-    """Best person (score x leg confidence) -> (3x2 xy, 3 conf) for the COCO side, or None."""
+def leg_keypoints(people: List, side: str, min_leg_px: float = 0.0):
+    """Nearest person (longest hip-knee-ankle chain in pixels, weighted by confidence) ->
+    (3x2 xy, 3 conf) for the COCO side, or None.  v3.0.5: legs shorter than min_leg_px are
+    ignored, so a bystander in the background is not measured (seen 16 Nov, empty walker)."""
     best, bs = None, -1.0
     for p in people or []:
         xy = np.asarray(p["xy"] if isinstance(p, dict) else p.xy, float)
         c = np.asarray(p["c"] if isinstance(p, dict) else p.conf, float)
-        s = float(p["s"] if isinstance(p, dict) else p.score)
         ix = list(JOINTS[side])
-        q = s * float(np.mean(c[ix]))
+        L = float(np.linalg.norm(xy[ix[0]] - xy[ix[1]]) + np.linalg.norm(xy[ix[2]] - xy[ix[1]]))
+        if L < min_leg_px:
+            continue
+        q = L * float(np.mean(c[ix]))
         if q > bs:
             best, bs = (xy[ix], c[ix]), q
     return best
@@ -270,7 +275,7 @@ class SideTracker:
         for s in "LR":
             cam = c.source[s]
             o = LegOut()
-            kp = leg_keypoints(people.get(cam, []), s)
+            kp = leg_keypoints(people.get(cam, []), s, c.min_leg_px)
             if kp is None:
                 o.status = "no person"
             elif float(kp[1].min()) < c.kp_conf:
