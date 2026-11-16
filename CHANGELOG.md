@@ -5,6 +5,18 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.0.1-v3.0.3 (2026-11-16) - first side-camera test with tape markers (left leg)
+* Board on the left leg: cam0 slant 36 deg (33 sideways, 19 down), 58 cm, fit 0.02 cm -> cam0 really views the
+  leg from the front-left; the homography raised its bend readings by ~8 deg.
+* Keypoints only (cam0 + homography) vs phone markers measured by hand (+-5 deg, time pairing uncertain):
+  ~30/43/58 vs ~48/79/71 -> the near camera's pose keypoints still read far too low.
+* Tracker dropped every bend frame: thigh/shank length gate +-25% too tight -> +-50% (v3.0.2).
+* Tape markers: walls/floor gave many false white blobs; ankle tape at the hem hidden. v3.0.2: blob must sit on
+  dark trousers; hip+knee from tape -> stand 3, bends 23/36/70 (peak 76), walking peaks 24-35.
+* v3.0.3 (Fable review): third tape moved to the lateral SHANK 10-15 cm above the hem (search seeded 70 % from
+  knee to the ankle keypoint), snap radius 50 px with continuity to the last tape position.
+* v3.0.1: board search single-threaded (the remote shell dropped while it used all cores).
+
 ## v3.0 (2026-11-15) - side cameras, 2D sagittal knee angle (not yet validated)
 **Why:** front stereo cannot measure a bent knee (validation 15 Nov). Cameras moved to 25 cm arms on the
 rear posts, one per side, ~70 cm high, tilted down 5-10 deg (cameras 90 cm apart). Standing: hip/knee/ankle of

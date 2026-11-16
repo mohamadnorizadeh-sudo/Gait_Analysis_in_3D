@@ -19,12 +19,14 @@ ap.add_argument('--planes', default='config/side_planes.json')
 ap.add_argument('--markers', action='store_true')
 ap.add_argument('--phases', default='')
 ap.add_argument('--source', default='L=cam0,R=cam1')
+ap.add_argument('--marker-joints', default='HKA', help='joints that must come from tape (HK = hip+knee only)')
+ap.add_argument('--shank-seed', type=float, default=0.7)
 ap.add_argument('--timeline', type=float, default=0.5, help='bin width (s) for the timeline, 0 = off')
 a = ap.parse_args()
 
 pm = PlaneMap.load(a.planes)
 src = dict(kv.split('=') for kv in a.source.split(','))
-cfg = SideConfig(source=src, markers=a.markers)
+cfg = SideConfig(source=src, markers=a.markers, marker_joints=a.marker_joints, shank_seed=a.shank_seed)
 tr = SideTracker(pm, cfg)
 rows = [json.loads(l) for l in open(os.path.join(a.rec, 'keypoints.jsonl'))]
 cap = None
@@ -49,7 +51,9 @@ for r in rows:
             pts = kp[0]
             if imgs is not None:
                 fl = [False] * 3
-                pts, n = snap_to_markers(imgs[cam], pts, cfg.marker_radius_px, flags=fl)
+                seed = np.array(pts, float).copy()
+                seed[2] = seed[1] + cfg.shank_seed * (seed[2] - seed[1])
+                pts, n = snap_to_markers(imgs[cam], seed, cfg.marker_radius_px, flags=fl)
                 if not all(fl[j] for j, ch in enumerate('HKA') if ch in cfg.marker_joints):
                     continue
             f = flexion_2d(*pm.to_plane(cam, leg, pts))
