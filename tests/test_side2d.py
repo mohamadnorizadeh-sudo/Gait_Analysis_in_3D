@@ -143,3 +143,25 @@ def test_tan_markers_found_and_white_wall_ignored():
     img[100:120, 90:110] = tan
     b = marker_blobs(img, SideConfig(marker_color="tan"))
     assert len(b) == 1 and abs(b[0][0] - 99.5) < 1 and abs(b[0][1] - 109.5) < 1
+
+
+def test_deep_flexion_knee_tape_not_taken_as_shin():
+    """v3.0.10: real cam1 frame 17 Nov 104 s (~87 deg): pose hip/knee/ankle and the two visible tapes."""
+    import numpy as np
+    from gait3d.side2d import snap_to_markers
+    kp = np.array([[125, 129], [145, 298], [46, 286]], float)
+    blobs = [(122, 203, 476), (104, 359, 178)]
+    seed = kp.copy(); seed[2] = kp[1] + 0.4 * (kp[2] - kp[1])
+    fl = []
+    out, n = snap_to_markers(None, seed, 140, blobs=blobs, flags=fl, shank=(kp[1], kp[2]))
+    assert fl == [True, True, False]
+    assert tuple(out[1]) == (104, 359)
+
+
+def test_tracker_shin_fallback_reads_deep_flexion():
+    import numpy as np
+    from gait3d.side2d import SideConfig, SideTracker, PlaneMap, flexion_2d
+    kp = np.array([[125, 129], [145, 298], [46, 286]], float)
+    knee_tape = np.array([104, 359.]); s = knee_tape + 0.4 * (kp[2] - kp[1])
+    f = flexion_2d(np.array([122, 203.]), knee_tape, s)
+    assert 80 < f < 100

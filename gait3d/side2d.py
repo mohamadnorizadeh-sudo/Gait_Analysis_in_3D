@@ -148,7 +148,7 @@ def marker_blobs(img, cfg):
     return white_blobs(img, **MARKER_COLORS[cfg.marker_color](cfg))
 
 
-def snap_to_markers(img, pts, radius_px=45.0, blobs=None, flags=None, prev=None):
+def snap_to_markers(img, pts, radius_px=45.0, blobs=None, flags=None, prev=None, shank=None, shank_perp=0.3):
     """Move each keypoint (hip, knee, ankle/shin) onto a white tape blob within radius.
     Returns (points, n_snapped).  A joint without a blob keeps the keypoint (and counts as unsnapped).
     flags (list) receives True/False per joint.
@@ -170,9 +170,26 @@ def snap_to_markers(img, pts, radius_px=45.0, blobs=None, flags=None, prev=None)
     axis = P[-1] - P[0]
     nrm = float(np.linalg.norm(axis))
     axis = axis / nrm if nrm > 1e-6 else np.array([0.0, 1.0])
+    def on_shank(q):
+        # v3.0.10: the shin tape must lie ON the shank (pose knee -> ankle), not just near the seed.
+        # Deep flexion (right leg ~87 deg, 17 Nov): the shin tape was not visible and the knee tape,
+        # 70 px below the knee keypoint, was taken as the shin tape -> status "H-A", one 122 deg spike.
+        if shank is None:
+            return True
+        k0, a0 = np.asarray(shank[0], float), np.asarray(shank[1], float)
+        v = a0 - k0
+        L2 = float(v @ v)
+        if L2 < 1:
+            return True
+        w = np.asarray(q, float) - k0
+        t = float(w @ v) / L2
+        perp = abs(w[0] * v[1] - w[1] * v[0]) / math.sqrt(L2)
+        return 0.05 < t < 1.0 and perp < shank_perp * math.sqrt(L2)
+
     cand = []
     for j, p in enumerate(centres):
-        c = [(k, math.hypot(x - p[0], y - p[1])) for k, (x, y, _a) in enumerate(blobs)]
+        c = [(k, math.hypot(x - p[0], y - p[1])) for k, (x, y, _a) in enumerate(blobs)
+             if j != 2 or on_shank((x, y))]
         cand.append([None] + [k for k, d in sorted(c, key=lambda t: t[1]) if d < radius_px][:6])
     best, best_key = None, None
     for combo in itertools.product(*cand):
@@ -224,6 +241,9 @@ class SideConfig:
     # v3.0.9: marker colour.  "white" = tape (fails in front of white walls, 17 Nov 14:05); "tan" = brown
     # cardboard squares, measured 17 Nov on both cameras: hue 18-21, saturation 77-143, brightness 108-211.
     marker_color: str = "white"
+    # v3.0.10: if the hip and knee tapes are found but the shin tape is not (deep flexion hides it), take the
+    # shank DIRECTION from the pose knee -> ankle keypoints, anchored at the knee tape.
+    shin_fallback: bool = True
     markers_required: int = 3        # frames with fewer snapped joints are rejected in marker mode
     # v3.0.2: which joints must come from tape (others fall back to the pose keypoint).  The ankle
     # tape at the trouser hem is often hidden from the near camera; the ankle keypoint is reliable.
@@ -337,10 +357,15 @@ class SideTracker:
                     seed[2] = seed[1] + c.shank_seed * (seed[2] - seed[1])
                     if img is not None:
                         pts, _ = snap_to_markers(img, seed, c.marker_radius_px, flags=fl,
-                                                 blobs=marker_blobs(img, c),
+                                                 blobs=marker_blobs(img, c), shank=(kp[0][1], kp[0][2]),
                                                  prev=self._last_tape.get(s))
                         self._last_tape[s] = [tuple(q) if f else None for q, f in zip(pts, fl)]
                     need = [j for j, ch in enumerate("HKA") if ch in c.marker_joints]
+                    if c.shin_fallback and fl[0] and fl[1] and not fl[2]:
+                        pts = np.array(pts, float)
+                        pts[2] = pts[1] + c.shank_seed * (np.asarray(kp[0][2], float) - np.asarray(kp[0][1], float))
+                        fl[2] = True
+                        o.status = "ok (shin from pose)"
                     if not all(fl[j] for j in need):
                         o.status, o.pts_px = "markers " + "".join("HKA"[j] if fl[j] else "-" for j in range(3)), pts
                         out[s] = o
