@@ -19,6 +19,8 @@ shoe laces (hue 25, sat 74) and dark tan items (brightness < 90).
 ("white" | "tan": hue 14-25, sat >= 70, brightness >= 100, dark-trouser ring kept).
 `07_side_session.py --marker-color`, `MARKER_COLOR=tan` in `config/side.env`. New test: tan square found,
 white wall ignored.
+- MARKER_RADIUS 100 -> 140: the first live check read "L markers -KA". The left hip keypoint sits at the waist,
+  about 125 px above the hip cardboard. After the change both legs read "ok" standing (L 21, R 17 deg).
 
 ## v3.0.8 - 2026-11-17 (afternoon) - knee/shin tape swap fixed
 
