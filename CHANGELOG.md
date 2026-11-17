@@ -5,6 +5,32 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## Validation 2026-11-17 14:24 - first recording within ~5 deg (cardboard markers, re-aimed cameras)
+
+Recording `side_session_20261117_112430` (v3.0.9, MARKER_COLOR=tan, MARKER_RADIUS=140) against phone video
+IMG_4909 (1x, floor level, side view). Phone angles come from the same three cardboard markers
+(`validation/ref_phone_tan.py`, seeded per leg, nearest-blob tracking), saved to
+`validation/ref_20261117_IMG_4909.csv`. Clock offset by correlation is 25.0 s for both legs (left r = 0.985).
+
+| leg | phase | phone | Pi | error | Pi valid |
+|---|---|---|---|---|---|
+| L | stand  |  4.3 | 14.0 | +9.7 | 100% |
+| L | hold 1 | 51.4 | 47.0 | -4.4 | 100% |
+| L | hold 2 | 60.4 | 57.0 | -3.4 | 100% |
+| L | hold 3 | 76.6 | 75.5 | -1.1 |  83% |
+| R | stand  | 15.8 | 18.5 | +2.7 | 100% |
+| R | hold 1 | 51.3 | 54.5 | +3.2 | 100% |
+| R | hold 2 | 62.9 | 68.0 | +5.1 | 100% |
+| R | hold 3 | 87.3 |  -   |  -   |   0% |
+
+**Result:** 6 of 7 measured phases within 5.1 deg. Open issues:
+1. Left standing reads +9.7 deg. The error shrinks with flexion (+9.7, -4.4, -3.4, -1.1), so it is not a
+   constant offset.
+2. Right deep hold (~87 deg) was lost. Status "markers H-A": the knee marker wasn't found in deep flexion,
+   and one 122 deg spike got through before the jump gate. The left deep hold also had two ~125 deg spikes
+   at its start.
+3. The phone was at floor level looking slightly up, so the reference itself is approximate (a few deg).
+
 ## v3.0.9 - 2026-11-17 (afternoon) - brown cardboard markers (colour detection)
 
 **Issue:** the 13:56 recording (side_session_20261117_105608) failed. The walker stood close to a white wall, and
