@@ -5,6 +5,22 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## Validation 2026-11-17 (both legs, new board calibrations, markers moved to front-outer) - NOT validated
+Board calibrations redone from the normal standing position: left cam0 slant 43 deg, 47 cm, fit 0.03 cm;
+right cam1 slant 47 deg, 40 cm, fit 0.04 cm (yesterday's kept as config/side_planes_20261116.json).
+Hip/knee markers moved toward the front-outer side -> markers found in most frames (L 1010/1381, R 1108/1381
+valid; was 53 / 0). Session `runs/side_session_20261117_072553`, phone IMG_4900.
+System (median per second): left standing 16 deg (should be ~5), left holds ~35 and ~54, the deepest hold
+dropped out (42-52 s); right standing 6-10, right holds only ~30-38 although the phone shows ~60-90.
+The phone reference could not be extracted automatically this time (front-outer markers sit on the edge of
+the leg in the true side view).
+Diagnosis: the homography is exact only for points in the calibrated plane (the side of the leg). Markers
+moved 4-6 cm to the front leave that plane; at 40-47 cm range and 43-47 deg slant this parallax changes the
+angle by tens of degrees. Root cause is the camera aim: each camera looks at its leg from the front-outside
+at ~45 deg instead of from the side.
+Next: turn each camera inward to face its leg perpendicularly (slant < 15 deg), markers back on the lateral
+side, redo the two board captures, repeat holds.
+
 ## Analysis 2026-11-17 of the 16 Nov two-leg recording - NOT validated
 `runs/side_session_20261116_120108` vs `validation/ref_20261116_IMG_4865.csv` (scripts/side_compare.py,
 scripts/side_variants.py). Live tracker: only 53 of ~1500 frames with a person were valid for the left leg and
