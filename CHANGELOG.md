@@ -5,6 +5,39 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.0.10 - 2026-11-17 (afternoon) - deep flexion: shin tape check + shin direction from pose
+
+**Issue:** in the 14:24 validation the right ~87 deg hold was lost and the left deep hold had ~125 deg spikes.
+Frames from cam1 at 104-108 s (status "markers H-A") showed the shin cardboard not visible in deep flexion.
+The knee cardboard, ~70 px below the pose knee keypoint, was taken as the "shin" tape because it was nearer
+the shin search point, so no knee tape was left and no angle came out.
+
+**Changes**
+- `snap_to_markers(shank=(knee_kp, ankle_kp))`: a shin-tape candidate must lie on the pose shank
+  (0.05 < t < 1 along knee->ankle, perpendicular distance < 0.3 x shank length).
+- `SideConfig.shin_fallback` (on): if the hip and knee tapes are found but no shin tape, the shank direction
+  comes from the pose knee -> ankle keypoints, anchored at the knee tape. Status "ok (shin from pose)".
+  The shank length gate is skipped for these frames (the pose shank is foreshortened in deep flexion), and
+  they are not used for the reference lengths.
+- Tests: the real 104 s cam1 frame (knee tape not taken as shin) and the fallback angle (80-100 deg).
+
+**Replay of side_session_20261117_112430 vs phone (IMG_4909), v3.0.9 -> v3.0.10**
+
+| leg | phase | phone | v3.0.9 | v3.0.10 |
+|---|---|---|---|---|
+| L | stand  |  4.3 | 14.0 (+9.7) | 14.0 (+9.7) |
+| L | hold 1 | 51.4 | 47.0 (-4.4) | 47.0 (-4.4) |
+| L | hold 2 | 60.4 | 57.0 (-3.4) | 57.0 (-3.4) |
+| L | hold 3 | 76.6 | 75.5 (-1.1), spikes to 126 | 74.0 (-2.6), range 66-79 |
+| R | stand  | 15.8 | 18.5 (+2.7) | 18.0 (+2.2) |
+| R | hold 1 | 51.3 | 54.5 (+3.2) | 55.0 (+3.7) |
+| R | hold 2 | 62.9 | 68.0 (+5.1) | 68.0 (+5.1) |
+| R | hold 3 | 87.3 | lost | 81.5 (-5.8), 100% valid |
+
+Still open: left standing +9.7 deg (it shrinks with flexion, so it's not an offset). The left cam0 view shows
+the three cardboards bent ~14 deg while the phone sees 4 deg. Suspected cause: off-plane cardboards at the
+22 deg camera slant, and/or the phone at floor level. Needs a goniometer reading at standing to settle.
+
 ## Validation 2026-11-17 14:24 - first recording within ~5 deg (cardboard markers, re-aimed cameras)
 
 Recording `side_session_20261117_112430` (v3.0.9, MARKER_COLOR=tan, MARKER_RADIUS=140) against phone video
