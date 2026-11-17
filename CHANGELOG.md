@@ -5,6 +5,22 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.0.6 - 2026-11-17 (afternoon) - cameras re-aimed, planes redone, shin-tape seed configurable
+
+**Issue:** the morning test read the right leg 30-38 deg against a 60-90 deg phone reference. The cameras saw
+each leg from ~45 deg in front, and the knee/shin tapes sat forward of the side seam (off the calibrated plane).
+After re-aiming, the walker's diagonal blue tube hid the low shin tape, so the tape moved up to mid/upper
+shin. The live tracker still searched for it 70% of the way down the shin (fixed 0.7), 50 px radius, so it would miss.
+
+**Changes**
+- Cameras turned inward. User stands ~20 cm further into the walker for calibration (no longer arms: vibration).
+- Board recaptured: cam1:R slant 21 deg (was 47), fit 0.03 cm, 42 cm. cam0:L slant 22 deg (was 43), fit 0.03 cm, 40 cm.
+- `07_side_session.py --shank-seed`, `SHANK_SEED` in `config/side.env` (now 0.4).
+- Simulation (homography, 3 joints): moving the leg sideways/fore-aft parallel to the calibrated plane gives
+  0 deg error at any slant (parallel planes map by pure scale), so the patient's distance from the frame
+  does not matter while the leg stays in view. Slant amplifies leg turn-out and off-plane tapes: worst
+  case for 10 deg turn-out or a 3 cm off-plane knee tape is ~1.5 deg at 15 deg slant, ~3 deg at 26, ~5 deg at 40.
+
 ## Validation 2026-11-17 (both legs, new board calibrations, markers moved to front-outer) - NOT validated
 Board calibrations redone from the normal standing position: left cam0 slant 43 deg, 47 cm, fit 0.03 cm;
 right cam1 slant 47 deg, 40 cm, fit 0.04 cm (yesterday's kept as config/side_planes_20261116.json).
