@@ -5,6 +5,20 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.0.7 - 2026-11-17 (afternoon) - tape detection: brighter threshold, wider search
+
+**Issue:** 20 s test with the re-aimed cameras: status "L markers ---", "R markers -K-", so no angle at all.
+On a recorded frame (side_session_20261117_103818): at brightness >= 165 the trouser-edge sheen joined the
+cam0 knee and shin tapes into one 73x331 px strip (rejected as too big). The cam0 hip tape was found but 87 px
+from the hip keypoint (search radius 50). On cam1 the right leg stood at the left image edge, so the hip and
+shin tapes merged with the bright background at the border.
+
+**Changes**
+- `SideConfig.marker_v_min` (default 200); the tracker passes it to `white_blobs`. At 200, cam0 found all
+  three tapes individually: (299,137), (312,317), (335,386).
+- `07_side_session.py --marker-radius --marker-vmin`; `config/side.env` MARKER_RADIUS=100, MARKER_VMIN=200.
+- Setup: stand about 10 cm further back, so the right leg isn't at cam1's image edge.
+
 ## v3.0.6 - 2026-11-17 (afternoon) - cameras re-aimed, planes redone, shin-tape seed configurable
 
 **Issue:** the morning test read the right leg 30-38 deg against a 60-90 deg phone reference. The cameras saw

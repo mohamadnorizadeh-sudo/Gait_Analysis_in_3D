@@ -176,6 +176,10 @@ class SideConfig:
     source: Dict[str, str] = field(default_factory=lambda: dict(DEFAULT_SOURCE))
     markers: bool = False            # snap hip/knee/ankle to white tape markers (needs images)
     marker_radius_px: float = 50.0
+    # v3.0.7: tape brightness threshold.  At 165 the sheen along the trouser edge (17 Nov afternoon, re-aimed
+    # cameras) joined the knee and shin tapes into one 73x331 px strip that failed the size test; at 200 all
+    # three tapes on cam0 were found individually.
+    marker_v_min: int = 200
     markers_required: int = 3        # frames with fewer snapped joints are rejected in marker mode
     # v3.0.2: which joints must come from tape (others fall back to the pose keypoint).  The ankle
     # tape at the trouser hem is often hidden from the near camera; the ankle keypoint is reliable.
@@ -289,6 +293,7 @@ class SideTracker:
                     seed[2] = seed[1] + c.shank_seed * (seed[2] - seed[1])
                     if img is not None:
                         pts, _ = snap_to_markers(img, seed, c.marker_radius_px, flags=fl,
+                                                 blobs=white_blobs(img, v_min=c.marker_v_min),
                                                  prev=self._last_tape.get(s))
                         self._last_tape[s] = [tuple(q) if f else None for q, f in zip(pts, fl)]
                     need = [j for j, ch in enumerate("HKA") if ch in c.marker_joints]
