@@ -5,6 +5,20 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## Analysis 2026-11-17 of the 16 Nov two-leg recording - NOT validated
+`runs/side_session_20261116_120108` vs `validation/ref_20261116_IMG_4865.csv` (scripts/side_compare.py,
+scripts/side_variants.py). Live tracker: only 53 of ~1500 frames with a person were valid for the left leg and
+none for the right (status `markers --A` / `H-A` / `-KA`): with the 4x4 cm markers the shin marker is found but
+the hip and knee markers are not - the hip marker is seen edge-on (9x9 px, 67 px from the hip keypoint) and the
+knee marker is hidden or fails the shape test from the near camera.
+Offline re-analysis, held bends, system minus phone:
+* relaxed markers (80 px, fill 0.3): left -12..-23 deg (one +50), right -54..+13; mean abs ~20 deg.
+* shin marker + pose hip/knee: mean abs 22 (left) / 28 (right) deg.
+* pose keypoints only: right leg reads 3-8 deg during 54-89 deg holds (clock alignment for this part doubtful).
+Clock alignment by correlation was weak (r 0.2-0.64), so the per-hold numbers are indicative only.
+Best result so far remains the 16 Nov left-leg test with 2 cm tapes (within ~6 deg up to ~50 deg, +8..13 deg at
+85-100 deg, 344 valid frames). The +-5 deg target is not met; right leg and walking are not validated.
+
 ## v3.0.4-v3.0.5 (2026-11-16, evening) - both legs calibrated; final recording NOT yet analysed
 * Right-leg board: cam1 slant 46 deg, fit 0.03 cm, board only 25 cm away (user stood off-centre; left was 58 cm).
 * 4x4 cm markers on both legs (hip, lateral knee, front-outer shin); blob area limit raised (v3.0.4).
