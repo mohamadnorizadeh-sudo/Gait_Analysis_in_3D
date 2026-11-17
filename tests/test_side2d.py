@@ -119,3 +119,15 @@ def test_bystander_in_background_is_ignored():
     assert leg_keypoints([far], "L", 170.0) is None
     kp = leg_keypoints([far, near], "L", 170.0)
     assert abs(kp[0][2][1] - 390) < 1
+
+
+def test_snap_keeps_leg_order_with_wide_radius():
+    """v3.0.8: knee keypoint closer to the shin tape must not swap knee and shin (read 170 deg)."""
+    import numpy as np
+    from gait3d.side2d import snap_to_markers
+    blobs = [(300, 137, 600), (312, 317, 400), (335, 386, 400)]          # hip, knee, shin tapes
+    seed = np.array([[225, 90], [330, 360], [338, 400]], float)          # knee kp sits near the shin tape
+    fl = []
+    out, n = snap_to_markers(None, seed, 100, blobs=blobs, flags=fl)
+    assert n == 3 and fl == [True, True, True]
+    assert tuple(out[1]) == (312, 317) and tuple(out[2]) == (335, 386)

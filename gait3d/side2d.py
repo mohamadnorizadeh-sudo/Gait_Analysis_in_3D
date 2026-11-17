@@ -134,24 +134,50 @@ def white_blobs(img, min_area=12, max_area=3000, v_min=165, s_max=70, dark_ring=
 
 
 def snap_to_markers(img, pts, radius_px=45.0, blobs=None, flags=None, prev=None):
-    """Move each keypoint (hip, knee, ankle) onto the nearest white tape blob within radius.
+    """Move each keypoint (hip, knee, ankle/shin) onto a white tape blob within radius.
     Returns (points, n_snapped).  A joint without a blob keeps the keypoint (and counts as unsnapped).
-    flags (list) receives True/False per joint."""
+    flags (list) receives True/False per joint.
+
+    v3.0.8: joint assignment instead of greedy nearest-first.  With the 100 px radius (v3.0.7) the knee
+    search reached the shin tape and the shin search the knee tape; the swap read 170 deg standing
+    (17 Nov, side_session_20261117_104124) and continuity kept it swapped.  Now every combination of
+    distinct blobs is scored by total distance, and tapes must keep the leg order hip -> knee -> shin
+    along the hip-to-shin direction."""
+    import itertools
     blobs = white_blobs(img) if blobs is None else blobs
-    out, used, n = np.array(pts, float).copy(), set(), 0
-    if flags is not None:
-        flags[:] = [False, False, False]
-    for j, p in enumerate(out):
+    P = np.array(pts, float)
+    out = P.copy()
+    centres = []
+    for j, p in enumerate(P):
         if prev is not None and prev[j] is not None:           # continuity: search around last tape
             p = 0.5 * (np.asarray(p) + np.asarray(prev[j]))
-        best, bd = None, radius_px
-        for k, (x, y, _a) in enumerate(blobs):
-            d = math.hypot(x - p[0], y - p[1])
-            if d < bd and k not in used:
-                best, bd = k, d
-        if best is not None:
-            used.add(best)
-            out[j] = blobs[best][:2]
+        centres.append(np.asarray(p, float))
+    axis = P[-1] - P[0]
+    nrm = float(np.linalg.norm(axis))
+    axis = axis / nrm if nrm > 1e-6 else np.array([0.0, 1.0])
+    cand = []
+    for j, p in enumerate(centres):
+        c = [(k, math.hypot(x - p[0], y - p[1])) for k, (x, y, _a) in enumerate(blobs)]
+        cand.append([None] + [k for k, d in sorted(c, key=lambda t: t[1]) if d < radius_px][:6])
+    best, best_key = None, None
+    for combo in itertools.product(*cand):
+        used = [k for k in combo if k is not None]
+        if len(used) != len(set(used)):
+            continue
+        proj = [float(np.dot(np.array(blobs[k][:2]) - P[0], axis)) for k in combo if k is not None]
+        if any(b <= a for a, b in zip(proj, proj[1:])):
+            continue
+        dist = sum(math.hypot(blobs[k][0] - centres[j][0], blobs[k][1] - centres[j][1])
+                   for j, k in enumerate(combo) if k is not None)
+        key = (-len(used), dist)                                  # most tapes first, then closest
+        if best_key is None or key < best_key:
+            best, best_key = combo, key
+    n = 0
+    if flags is not None:
+        flags[:] = [False] * len(P)
+    for j, k in enumerate(best or [None] * len(P)):
+        if k is not None:
+            out[j] = blobs[k][:2]
             n += 1
             if flags is not None:
                 flags[j] = True

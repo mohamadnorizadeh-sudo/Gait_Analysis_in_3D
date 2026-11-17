@@ -5,6 +5,17 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.0.8 - 2026-11-17 (afternoon) - knee/shin tape swap fixed
+
+**Issue:** the left leg read 170 deg while the user stood straight (side_session_20261117_104124).
+Replaying it offline showed the knee snapped to the shin tape (334,389) and the shin to the knee tape (312,319).
+The 100 px radius (v3.0.7) let the knee search reach the shin tape, and greedy nearest-first assignment took it.
+Continuity then kept the swap.
+
+**Change:** `snap_to_markers` now scores every combination of distinct blobs within the radius. Most tapes
+wins, then smallest total distance. Tapes must keep the leg order hip -> knee -> shin along the hip-to-shin
+direction. New test `test_snap_keeps_leg_order_with_wide_radius`.
+
 ## v3.0.7 - 2026-11-17 (afternoon) - tape detection: brighter threshold, wider search
 
 **Issue:** 20 s test with the re-aimed cameras: status "L markers ---", "R markers -K-", so no angle at all.
