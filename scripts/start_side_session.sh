@@ -12,6 +12,7 @@ ARGS=(--out "$D" --source "${SOURCE:-L=cam0,R=cam1}" --seconds "${MAX_SECONDS:-3
 [ -n "${SHANK_SEED:-}" ] && ARGS+=(--shank-seed "$SHANK_SEED")
 [ -n "${MARKER_RADIUS:-}" ] && ARGS+=(--marker-radius "$MARKER_RADIUS")
 [ -n "${MARKER_VMIN:-}" ] && ARGS+=(--marker-vmin "$MARKER_VMIN")
+[ -n "${MARKER_COLOR:-}" ] && ARGS+=(--marker-color "$MARKER_COLOR")
 nohup python3 -u scripts/07_side_session.py "${ARGS[@]}" > "$D/run.log" 2>&1 &
 echo "$D" > runs/LAST_SESSION
 echo "started: $D  (web: http://$(hostname -I | awk '{print $1}'):${WEB_PORT:-8080})"

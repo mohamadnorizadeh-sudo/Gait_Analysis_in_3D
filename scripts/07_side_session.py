@@ -25,6 +25,7 @@ ap.add_argument('--markers', action='store_true', help='snap hip/knee/ankle to w
 ap.add_argument('--marker-joints', default='HKA')
 ap.add_argument('--marker-radius', type=float, default=50.0)
 ap.add_argument('--marker-vmin', type=int, default=200)
+ap.add_argument('--marker-color', default='white', choices=['white', 'tan'])
 ap.add_argument('--shank-seed', type=float, default=0.7, help='shin tape search start: fraction knee->ankle')
 ap.add_argument('--source', default='L=cam0,R=cam1', help='which camera measures which leg')
 ap.add_argument('--rot0', type=int, default=0)
@@ -43,7 +44,8 @@ src_map = dict(kv.split('=') for kv in a.source.split(','))
 planes = PlaneMap.load(a.planes)
 tracker = SideTracker(planes, SideConfig(source=src_map, markers=a.markers, marker_joints=a.marker_joints,
                                              shank_seed=a.shank_seed,
-                                             marker_radius_px=a.marker_radius, marker_v_min=a.marker_vmin))
+                                             marker_radius_px=a.marker_radius, marker_v_min=a.marker_vmin,
+                                             marker_color=a.marker_color))
 os.makedirs(a.out, exist_ok=True)
 with open(os.path.join(a.out, 'config.json'), 'w') as f:
     json.dump({'source': src_map, 'markers': a.markers, 'planes': sorted(planes.planes), 'started': time.ctime()}, f)

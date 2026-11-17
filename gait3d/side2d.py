@@ -103,13 +103,17 @@ class PlaneMap:
 # ---------------------------------------------------------------------- #
 # tape markers (keypoint-guided)
 # ---------------------------------------------------------------------- #
-def white_blobs(img, min_area=12, max_area=3000, v_min=165, s_max=70, dark_ring=True, ring_v_max=110):
+def white_blobs(img, min_area=12, max_area=3000, v_min=165, s_max=70, dark_ring=True, ring_v_max=110,
+                hue=None, s_min=0):
     """Small bright, unsaturated, compact blobs (2 cm white tape squares) -> list of (x, y, area).
     v3.0.2: with dark_ring, a blob must sit on dark trousers (median brightness of a ring around it
     <= ring_v_max) - the walls and floor gave many false white blobs (16 Nov)."""
     import cv2
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-    m = ((hsv[..., 2] >= v_min) & (hsv[..., 1] <= s_max)).astype(np.uint8)
+    m = (hsv[..., 2] >= v_min) & (hsv[..., 1] <= s_max) & (hsv[..., 1] >= s_min)
+    if hue is not None:                       # v3.0.9: coloured markers (OpenCV hue 0-179)
+        m &= (hsv[..., 0] >= hue[0]) & (hsv[..., 0] <= hue[1])
+    m = m.astype(np.uint8)
     n, lab, st, cen = cv2.connectedComponentsWithStats(m, 8)
     out = []
     for i in range(1, n):
@@ -131,6 +135,17 @@ def white_blobs(img, min_area=12, max_area=3000, v_min=165, s_max=70, dark_ring=
                 continue
         out.append((float(cen[i][0]), float(cen[i][1]), float(a)))
     return out
+
+
+MARKER_COLORS = {
+    # name: kwargs for white_blobs
+    "white": lambda c: dict(v_min=c.marker_v_min, s_max=70),
+    "tan": lambda c: dict(v_min=100, s_min=70, s_max=255, hue=(14, 25)),
+}
+
+
+def marker_blobs(img, cfg):
+    return white_blobs(img, **MARKER_COLORS[cfg.marker_color](cfg))
 
 
 def snap_to_markers(img, pts, radius_px=45.0, blobs=None, flags=None, prev=None):
@@ -206,6 +221,9 @@ class SideConfig:
     # cameras) joined the knee and shin tapes into one 73x331 px strip that failed the size test; at 200 all
     # three tapes on cam0 were found individually.
     marker_v_min: int = 200
+    # v3.0.9: marker colour.  "white" = tape (fails in front of white walls, 17 Nov 14:05); "tan" = brown
+    # cardboard squares, measured 17 Nov on both cameras: hue 18-21, saturation 77-143, brightness 108-211.
+    marker_color: str = "white"
     markers_required: int = 3        # frames with fewer snapped joints are rejected in marker mode
     # v3.0.2: which joints must come from tape (others fall back to the pose keypoint).  The ankle
     # tape at the trouser hem is often hidden from the near camera; the ankle keypoint is reliable.
@@ -319,7 +337,7 @@ class SideTracker:
                     seed[2] = seed[1] + c.shank_seed * (seed[2] - seed[1])
                     if img is not None:
                         pts, _ = snap_to_markers(img, seed, c.marker_radius_px, flags=fl,
-                                                 blobs=white_blobs(img, v_min=c.marker_v_min),
+                                                 blobs=marker_blobs(img, c),
                                                  prev=self._last_tape.get(s))
                         self._last_tape[s] = [tuple(q) if f else None for q, f in zip(pts, fl)]
                     need = [j for j, ch in enumerate("HKA") if ch in c.marker_joints]

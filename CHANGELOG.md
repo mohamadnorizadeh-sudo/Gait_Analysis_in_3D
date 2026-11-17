@@ -5,6 +5,21 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.0.9 - 2026-11-17 (afternoon) - brown cardboard markers (colour detection)
+
+**Issue:** the 13:56 recording (side_session_20261117_105608) failed. The walker stood close to a white wall, and
+the white tape squares merged with the wall wherever they sat near the leg's edge in the image. The user replaced
+them with 3x3 cm brown cardboard squares.
+
+**Measured** (side_view frame, user standing): cardboard on cam0 hue 20-21, sat 77-94, brightness 194-211.
+On cam1 hue 18-19, sat 114-143, brightness 108-121. All of them fully surrounded by dark trousers. Distractors:
+shoe laces (hue 25, sat 74) and dark tan items (brightness < 90).
+
+**Change:** `white_blobs(hue=, s_min=)`, `marker_blobs(img, cfg)`, and `SideConfig.marker_color`
+("white" | "tan": hue 14-25, sat >= 70, brightness >= 100, dark-trouser ring kept).
+`07_side_session.py --marker-color`, `MARKER_COLOR=tan` in `config/side.env`. New test: tan square found,
+white wall ignored.
+
 ## v3.0.8 - 2026-11-17 (afternoon) - knee/shin tape swap fixed
 
 **Issue:** the left leg read 170 deg while the user stood straight (side_session_20261117_104124).

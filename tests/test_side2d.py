@@ -131,3 +131,15 @@ def test_snap_keeps_leg_order_with_wide_radius():
     out, n = snap_to_markers(None, seed, 100, blobs=blobs, flags=fl)
     assert n == 3 and fl == [True, True, True]
     assert tuple(out[1]) == (312, 317) and tuple(out[2]) == (335, 386)
+
+
+def test_tan_markers_found_and_white_wall_ignored():
+    """v3.0.9: brown cardboard squares on navy trousers are found; a white wall patch is not."""
+    import cv2, numpy as np
+    from gait3d.side2d import SideConfig, marker_blobs
+    img = np.full((300, 200, 3), (235, 235, 235), np.uint8)             # white wall
+    img[:, 40:160] = (60, 30, 25)                                       # navy trousers (BGR)
+    tan = cv2.cvtColor(np.uint8([[[20, 110, 180]]]), cv2.COLOR_HSV2BGR)[0, 0].tolist()
+    img[100:120, 90:110] = tan
+    b = marker_blobs(img, SideConfig(marker_color="tan"))
+    assert len(b) == 1 and abs(b[0][0] - 99.5) < 1 and abs(b[0][1] - 109.5) < 1
