@@ -374,7 +374,7 @@ class SideTracker:
                 P = self.planes.to_plane(cam, s, pts)
                 th, sh = float(np.linalg.norm(P[0] - P[1])), float(np.linalg.norm(P[2] - P[1]))
                 ref = self.lengths[s]
-                if ref is not None and not (abs(th / ref[0] - 1) <= c.len_tol and abs(sh / ref[1] - 1) <= c.len_tol):
+                if ref is not None and not (abs(th / ref[0] - 1) <= c.len_tol and (o.status == "ok (shin from pose)" or abs(sh / ref[1] - 1) <= c.len_tol)):
                     o.status = "length gate"
                 else:
                     f = flexion_2d(*P)
@@ -384,7 +384,8 @@ class SideTracker:
                             o.status = "jump gate"
                         else:
                             o.raw = f
-                            raws[s], lens[s] = f, (th, sh)
+                            if o.status != "ok (shin from pose)":     # reference lengths: real tapes only
+                                raws[s], lens[s] = f, (th, sh)
             out[s] = o
         self._neutral_step(t, raws, lens)
         for s, o in out.items():
