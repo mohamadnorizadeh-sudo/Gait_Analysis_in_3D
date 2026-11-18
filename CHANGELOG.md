@@ -5,6 +5,42 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## Validation 2026-11-18 16:30 - MARKERLESS vs phone on the held bends (both days)
+
+Keypoint-only replay (`scripts/side_dump_markerless.py`, no standing offset) of the two hold recordings.
+Phone references and clock offsets as before (18 Nov IMG_4933, 13.5 s; 17 Nov IMG_4909, 25.0 s). The 17 Nov
+replay uses the 17 Nov planes (`config/side_planes_20261117.json`). Traces are saved in
+`validation/markerless_bins_*.txt`.
+
+| day | leg | phase | phone | markers | markerless | err markers | err markerless |
+|---|---|---|---|---|---|---|---|
+| 18 | L | stand | 0.2 | 8.0 | 1.0 | +7.8 | +0.8 |
+| 18 | L | ~20 | 30.0 | 25.0 | 27.0 | -5.0 | -3.0 |
+| 18 | L | ~40 | 46.0 | 42.0 | 43.0 | -4.0 | -3.0 |
+| 18 | L | ~60 | 60.8 | 58.0 | 61.0 | -2.8 | +0.2 |
+| 18 | R | stand | 4.4 | 11.0 | 2.5 | +6.6 | -1.9 |
+| 18 | R | ~20 | 26.9 | 27.0 | 32.0 | +0.1 | +5.1 |
+| 18 | R | ~40 | 38.6 | 39.0 | 46.0 | +0.4 | +7.4 |
+| 18 | R | ~60 | 56.0 | 60.0 | 73.0 | +4.0 | +17.0 |
+| 17 | L | stand | 4.3 | 14.0 | 7.0 | +9.7 | +2.7 |
+| 17 | L | ~50 | 51.4 | 47.0 | 51.0 | -4.4 | -0.4 |
+| 17 | L | ~60 | 60.4 | 57.0 | 59.0 | -3.4 | -1.4 |
+| 17 | L | ~77 | 76.6 | 74.0 | 83.0 | -2.6 | +6.4 |
+| 17 | R | ~50 | 51.3 | 55.0 | 50.0 | +3.7 | -1.3 |
+| 17 | R | ~63 | 62.9 | 68.0 | 63.0 | +5.1 | +0.1 |
+
+**Findings**
+- **Standing:** markerless agrees with the phone (-1.9 to +2.7 deg). The markers' +7-10 deg standing offset comes
+  from where the cardboard sits on loose trousers, not from the cameras.
+- **Left leg (both days) and right leg on 17 Nov:** markerless within 3 deg up to ~60 deg (+6.4 at 77 deg).
+- **Right leg on 18 Nov** (cam1 re-aimed after the screw, recalibrated 13:40): markerless over-reads more with
+  flexion (+5, +7, +17 deg) while markers on the same frames are right (+0, +0, +4). Not an L/R label swap:
+  the cam1 R-chain is the bending leg, conf 0.94-0.98; L-chain 10-16 deg. Likely cause: pose joint centres
+  lie ~5-10 cm inside the calibrated lateral-surface plane at different depths (hip > knee > ankle). The
+  homography then maps them with a geometry-dependent error, which changed when cam1 moved.
+- **Consequence for the markerless product:** after each camera calibration, a short held-bend check
+  (with markers or a goniometer) should confirm or correct the markerless reading per leg.
+
 ## Walking 2026-11-18 15:25 re-analysed with v3.1.2 - markers vs markerless vs WBDS
 
 `side_session_20261118_122542`, `side_gait_cycles.py` (v3.1.2: no jump-gate lock-out, walking bouts only),
