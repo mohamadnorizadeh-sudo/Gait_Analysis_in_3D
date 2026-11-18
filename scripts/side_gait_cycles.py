@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Gait-cycle analysis of a side-camera session (v3.1.0).
+"""Gait-cycle analysis of a side-camera session (v3.1.0; v3.1.2 walking-bout filter + stride QC).
 
 Replays a recorded session (raw.mp4 + keypoints.jsonl) through two trackers at once:
   * marker  - cardboard markers (the reference on the walker), and
@@ -99,11 +99,26 @@ def peaks(v, t, min_gap, prom):
     return sorted(keep)
 
 
+def walking_mask(t, x, leg):
+    """v3.1.2: walking = the ankle moves fore-aft relative to the hip by > 25 % of the leg length within
+    +-1.25 s.  On 18 Nov standing, turning and stepping in/out of the walker were cut into 'strides' and
+    flattened the mean curves (65-80 'strides' in 7 min, stride time SD ~1 s)."""
+    m = np.zeros(len(t), bool)
+    for i in range(len(t)):
+        lo, hi = np.searchsorted(t, t[i] - 1.25), np.searchsorted(t, t[i] + 1.25)
+        seg = x[lo:hi]
+        seg = seg[~np.isnan(seg)]
+        m[i] = len(seg) >= 8 and (seg.max() - seg.min()) > 0.25 * leg
+    return m
+
+
 def strides(d, sign):
     t = np.asarray(d['t'])
     ank = np.asarray(d['ank'], float); hip = np.asarray(d['hip'], float)
-    s = smooth(sign * (ank[:, 0] - hip[:, 0]))
+    xr = ank[:, 0] - hip[:, 0]
+    s = smooth(sign * xr)
     leg = np.nanmedian(np.linalg.norm(ank - hip, axis=1))
+    walk = walking_mask(t, xr, leg)
     hs = peaks(s, t, a.min_stride * 0.8, 0.15 * leg)
     out = []
     for i, j in zip(hs[:-1], hs[1:]):
@@ -111,6 +126,9 @@ def strides(d, sign):
         if not (a.min_stride <= dur <= a.max_stride):
             continue
         seg = slice(i, j + 1)
+        exc = xr[seg][~np.isnan(xr[seg])]
+        if walk[seg].mean() < 0.8 or len(exc) < 5 or exc.max() - exc.min() < 0.25 * leg:
+            continue
         cur = {}
         for k in ('mk', 'ps'):
             v = np.asarray(d[k][seg], float)
@@ -120,6 +138,9 @@ def strides(d, sign):
             tt = (t[seg] - t[i]) / dur * 100
             cur[k] = np.interp(np.arange(101), tt, fill(v))
         out.append(dict(t=float(t[i]), dur=float(dur), **cur))
+    if len(out) >= 3:                                   # drop strides far from the typical stride time
+        med = np.median([x['dur'] for x in out])
+        out = [x for x in out if 0.6 * med <= x['dur'] <= 1.6 * med]
     return out
 
 
@@ -149,6 +170,9 @@ for s in 'LR':
         if len(C):
             r[k + '_mean'] = np.round(C.mean(0), 1).tolist()
             r[k + '_sd'] = np.round(C.std(0), 1).tolist()
+    for k in ('mk', 'ps'):
+        r[k + '_swing_peaks'] = [round(float(x[k][50:95].max()), 1) if x[k] is not None else None for x in st]
+        r[k + '_stance_min'] = [round(float(x[k][5:50].min()), 1) if x[k] is not None else None for x in st]
     both = [x for x in st if x['mk'] is not None and x['ps'] is not None]
     if both:
         e = np.array([x['ps'] - x['mk'] for x in both])
@@ -167,7 +191,13 @@ for s in 'LR':
                 m.max() - m.min()))
             if a.compact:
                 print('   ', k, ' '.join('%d' % round(v) for v in m[::2]))
+    for k, name in (('mk', 'marker'), ('ps', 'markerless')):
+        v = [p for p in r[k + '_swing_peaks'] if p is not None]
+        if v:
+            print('  %-10s per-stride swing peak: median %.1f  range %.1f-%.1f' % (name, np.median(v), min(v), max(v)))
     if both:
+        dp = np.array([x['ps'][50:95].max() - x['mk'][50:95].max() for x in both])
+        print('  markerless - marker swing peak: mean %+.1f  SD %.1f' % (dp.mean(), dp.std()))
         print('  markerless - marker: bias %+.1f  RMSE %.1f  (after bias %.1f)  per stride %s' % (
             r['ps_minus_mk_bias'], r['ps_minus_mk_rmse'], r['ps_minus_mk_rmse_after_bias'],
             r['ps_minus_mk_rmse_per_stride']))

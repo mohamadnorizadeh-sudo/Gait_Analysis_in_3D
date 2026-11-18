@@ -5,6 +5,30 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.1.2 - 2026-11-18 (afternoon) - walking fixes: jump-gate lock-out, walking-bout filter
+
+**Issue:** diagnosing the 15:25 walking recording with the new `scripts/side_walk_diag.py`
+(9.3 fps, 443 s): ~1700 frames per leg were "no person" (stepping out of view, turning). Walking bouts
+added up to 89 s (L) and 69 s (R). In walking frames the marker tracker was valid 95 % (L) / 78 % (R); the
+right leg lost 14 % of frames to the length gate (likely the brown shirt next to the hip marker). Raw
+flexion while walking: L median 10.3, p95 20.8, max 46.9 deg; R median 8.5, p95 24.2, max 65.3 deg.
+Two bugs flattened the gait curves:
+1. **Jump-gate lock-out.** Each frame was compared with the last ACCEPTED value, so after one rejected
+   jump the following frames kept being rejected for up to 0.5 s. There were 41 runs, 14 of them 3-4 frames
+   long, enough to delete a whole swing peak.
+2. **Standing counted as strides.** `side_gait_cycles.py` cut standing, turning and stepping in/out into
+   "strides" (65-80 in 7 min).
+
+**Changes**
+- `SideConfig.max_rate_dps` (450): the jump gate allows max(25 deg, 450 deg/s x dt). Two consecutive
+  frames that agree within 25 deg are accepted as real movement. Test: a 10->50->62->50->15 deg swing
+  at 9.3 fps passes; a single 120 deg spike is still rejected.
+- `side_gait_cycles.py`: walking-bout mask (ankle-hip fore-aft range > 25 % of the leg length within
+  +-1.25 s). A stride must be >= 80 % inside a bout with its own excursion > 25 %, and within 0.6-1.6 x the
+  median stride time. Per-stride swing peaks and the markerless-minus-marker peak difference are reported.
+  Synthetic check (20 s walking at 2.0 s strides between 12 s + 18 s of noisy standing): 10 strides per
+  leg, swing peak 51.7 deg (truth 52.3); standing is no longer counted.
+
 ## Walking trial 2026-11-18 15:25 - first gait-cycle run (preliminary, not validated)
 
 Recording `side_session_20261118_122542` (~7 min, 4344 frames, ~10 fps; passes back and forth in the walker),

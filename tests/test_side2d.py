@@ -165,3 +165,30 @@ def test_tracker_shin_fallback_reads_deep_flexion():
     knee_tape = np.array([104, 359.]); s = knee_tape + 0.4 * (kp[2] - kp[1])
     f = flexion_2d(np.array([122, 203.]), knee_tape, s)
     assert 80 < f < 100
+
+
+def test_jump_gate_does_not_lock_out_a_real_swing():
+    """v3.1.2: a fast but real knee bend (10 -> 50 -> 60 -> 50 -> 15 deg at ~9 fps) must come through;
+    a single-frame spike (10 -> 120 -> 10) must still be rejected."""
+    import numpy as np
+    from gait3d.side2d import SideTracker, SideConfig
+
+    def person(flex):
+        th = np.radians(flex)
+        hip = np.array([180., 100.]); knee = hip + [0, 200]; ank = knee + 200 * np.array([-np.sin(th), np.cos(th)])
+        xy = np.zeros((17, 2)); xy[11], xy[13], xy[15] = hip, knee, ank; xy[12], xy[14], xy[16] = hip, knee, ank
+        return [{'xy': xy.tolist(), 'c': [0.9] * 17}]
+
+    def run(seq):
+        tr = SideTracker(cfg=SideConfig(source={'L': 'cam0', 'R': 'cam1'}, use_offset=False))
+        out = []
+        for i, f in enumerate(seq):
+            o = tr.process(i * 0.108, {'cam0': person(f), 'cam1': person(f)})
+            out.append(None if o['L'].raw is None else round(o['L'].raw))
+        return out
+
+    stand = [10] * 30
+    swing = run(stand + [10, 50, 62, 50, 15, 10, 10])
+    assert swing[30:37] == [10, 50, 62, 50, 15, 10, 10]
+    spike = run(stand + [10, 120, 10, 10])
+    assert spike[31] is None and spike[32] == 10

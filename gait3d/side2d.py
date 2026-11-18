@@ -225,6 +225,12 @@ class SideConfig:
     min_leg_px: float = 170.0        # hip-knee-ankle chain; the user's near leg is ~300 px, a bystander < 120
     len_tol: float = 0.5             # segment length gate vs standing lengths (v3.0.2: 0.25 dropped every bend)
     max_step_deg: float = 25.0       # per-frame jump gate (~10 fps)
+    # v3.1.2: the gate also allows max_rate_dps x dt (knee swing in normal gait peaks near 350-450 deg/s,
+    # i.e. 35-45 deg between frames at 9.3 fps), and two CONSECUTIVE frames that agree with each other
+    # (within max_step_deg) are accepted as real movement.  Before, every frame was compared with the last
+    # ACCEPTED value, so one rejected jump kept rejecting the following frames for up to 0.5 s
+    # (walking 18 Nov: 41 jump-gate runs, 14 of them 3-4 frames long, i.e. whole swing peaks).
+    max_rate_dps: float = 450.0
     hold_s: float = 0.25             # keep the last good value this long, then "--"
     filter_min_cutoff: float = 1.5
     filter_beta: float = 0.05
@@ -293,6 +299,7 @@ class SideTracker:
         c = self.cfg
         self.filters = {s: OneEuroFilter(c.filter_min_cutoff, c.filter_beta) for s in "LR"}
         self.last = {s: None for s in "LR"}           # (t, raw) of last accepted value
+        self._pending = {s: None for s in "LR"}       # (t, raw) of the last frame rejected by the jump gate
         self.lengths = {s: None for s in "LR"}        # standing (thigh, shank) in plane units
         self._len_samples = {s: [] for s in "LR"}
         self._last_tape = {}
@@ -380,9 +387,18 @@ class SideTracker:
                     f = flexion_2d(*P)
                     if f is not None:
                         prev = self.last[s]
-                        if prev is not None and t - prev[0] < 0.5 and abs(f - prev[1]) > c.max_step_deg:
+                        jump = False
+                        if prev is not None and t - prev[0] < 0.5:
+                            allowed = max(c.max_step_deg, c.max_rate_dps * (t - prev[0]))
+                            if abs(f - prev[1]) > allowed:
+                                pend = self._pending[s]
+                                jump = not (pend is not None and t - pend[0] < 0.3
+                                            and abs(f - pend[1]) <= c.max_step_deg)
+                        if jump:
                             o.status = "jump gate"
+                            self._pending[s] = (t, f)
                         else:
+                            self._pending[s] = None
                             o.raw = f
                             if o.status != "ok (shin from pose)":     # reference lengths: real tapes only
                                 raws[s], lens[s] = f, (th, sh)
