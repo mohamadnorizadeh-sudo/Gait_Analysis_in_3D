@@ -5,6 +5,26 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.1.0 - 2026-11-18 - walking analysis tools + normative reference (WBDS)
+
+**Why:** after 17 Nov the focus moves to walking and smaller knee angles, and the final product will be
+markerless. Every walking recording should give, from the same frames: the marker angle (reference), the
+markerless angle (product), and a comparison with healthy walking from a public dataset.
+
+**Added**
+- `validation/normative/wbds_knee_flexion.csv` + README: knee flexion over the gait cycle (mean, SD;
+  42 healthy adults) from the WBDS dataset (Fukuchi, Fukuchi & Duarte 2018, PeerJ 6:e4640, CC BY 4.0)
+  at treadmill 0.50 / 0.68 / 0.87 / 1.24 m/s and overground slow/comfortable. At 0.50 m/s:
+  loading-response peak 9.6 +- 7.3, stance minimum 2.4 +- 5.5, swing peak 52.7 +- 4.9 deg at 76 %.
+- `scripts/side_gait_cycles.py`: replays a session through a marker tracker and a markerless tracker at
+  once. Gait events come from pose keypoints with the Zeni (2008) rule (heel strike = ankle most anterior
+  to the hip; the camera travels with the walker, as on a treadmill). Strides are resampled to 0-100 %, and
+  it prints per leg the mean/SD curves and markerless-minus-marker bias/RMSE.
+- `scripts/compare_normative.py`: r, RMSE, offset-free RMSE, % of cycle within +-2 SD, and key features
+  against a WBDS condition, plus an optional PNG plot.
+- Check on synthetic walking built from the WBDS 0.50 m/s mean curves (30 s, 1.6 s strides, both legs):
+  18 strides per leg found, swing peak 52.0 deg at 75 % (truth 52.3 deg at 76 %).
+
 ## v3.0.10 - 2026-11-17 (afternoon) - deep flexion: shin tape check + shin direction from pose
 
 **Issue:** in the 14:24 validation the right ~87 deg hold was lost and the left deep hold had ~125 deg spikes.
