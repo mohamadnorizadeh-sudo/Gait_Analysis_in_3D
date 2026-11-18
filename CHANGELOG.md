@@ -5,6 +5,27 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## Validation 2026-11-18 13:46 - small-angle holds (0-60 deg), markers vs phone
+
+Recording `side_session_20261118_104622` (v3.1.1, cam1:R recalibrated 13:40) against phone IMG_4933
+(1x, low side view). Phone angles come from the same cardboard markers (`validation/ref_phone_tan_20261118.py`,
+saved to `validation/ref_20261118_IMG_4933.csv`). Clock offset by correlation is 13.5 s for both legs (r = 0.987 each).
+
+| leg | phase | phone | Pi | error |
+|---|---|---|---|---|
+| L | stand | 0.2 | 8.0 | +7.8 |
+| L | ~20 | 30.0 | 25.0 | -5.0 |
+| L | ~40 | 46.0 | 42.0 | -4.0 |
+| L | ~60 | 60.8 | 58.0 | -2.8 |
+| R | stand | 4.4 | 11.0 | +6.6 |
+| R | ~20 | 26.9 | 27.0 | +0.1 |
+| R | ~40 | 38.6 | 39.0 | +0.4 |
+| R | ~60 | 56.0 | 60.0 | +4.0 |
+
+**Result:** all six held bends within 5.0 deg. Standing reads 7-8 deg above the phone on **both** legs
+(17 Nov: left +9.7, right +2.7). Loose trousers move the cardboards. The phone is at floor level, so its
+own standing value is uncertain too. Still needs a goniometer check at standing.
+
 ## Calibration 2026-11-18 13:40 - cam1:R redone after a mount screw was tightened
 
 **Issue:** the camera check (walker-frame features vs the 17 Nov recording) found cam0 unchanged
