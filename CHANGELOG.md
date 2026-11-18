@@ -5,6 +5,14 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## Calibration 2026-11-18 13:40 - cam1:R redone after a mount screw was tightened
+
+**Issue:** the camera check (walker-frame features vs the 17 Nov recording) found cam0 unchanged
+(0-1 px, 0.4 deg). After the user tightened a screw, cam1 had moved 17-27 px sideways and 24-28 px down,
+rotated 1.2-1.9 deg, scale 0.96-0.98, with small changes between three checks.
+**Done:** board recaptured for cam1:R. Slant 22 deg (left/right +22, up/down -4; was 21 / -11), fit 0.02 cm,
+40 cm. The previous planes are backed up as `config/side_planes_20261117.json` on the Pi.
+
 ## v3.1.0 - 2026-11-18 - walking analysis tools + normative reference (WBDS)
 
 **Why:** after 17 Nov the focus moves to walking and smaller knee angles, and the final product will be
