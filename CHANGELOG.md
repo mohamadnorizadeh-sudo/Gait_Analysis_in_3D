@@ -5,6 +5,25 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## Walking trial 2026-11-18 15:25 - first gait-cycle run (preliminary, not validated)
+
+Recording `side_session_20261118_122542` (~7 min, 4344 frames, ~10 fps; passes back and forth in the walker),
+phone IMG_4941 on a stand beside the path. `side_gait_cycles.py` on the Pi:
+- L: 65 "strides" (stride 2.21 +- 1.05 s). Marker mean curve: swing peak 14 deg, ROM 4.7. Markerless: swing
+  peak 10.9 deg at 69 %, ROM 7.6. Markerless - marker: bias -4.9, RMSE 7.1 (5.1 after bias).
+- R: 80 "strides" (1.86 +- 0.76 s). Marker swing peak 12.4 deg, ROM 4.1. Markerless 12.1 deg at 77 %, ROM 5.9.
+  Markerless - marker: bias -0.9, RMSE 5.2 (5.1 after bias).
+
+**Issues found (to fix before these curves mean anything):**
+1. The curves are flattened. The 0.5 s marker trace shows swing peaks of ~50-70 deg only now and then, and many
+   swing frames are missing (no value) while stance frames are steady at 8-12 deg. Suspects: the 25 deg/frame
+   jump gate at ~10 fps, the 0.25 s hold, and marker blur in swing.
+2. Stride detection also counts standing and turning periods (65-80 "strides", stride-time SD ~1 s). It needs a
+   walking-bout filter (ankle-hip excursion amplitude) before averaging.
+3. Phone reference: low placement, so hip markers are often out of frame; 0.5 s traces correlate poorly
+   (r ~0.4). The phone is not usable for walking without a better placement.
+4. The user wore a brown shirt (same hue as the cardboard markers) and loose trousers.
+
 ## Validation 2026-11-18 13:46 - small-angle holds (0-60 deg), markers vs phone
 
 Recording `side_session_20261118_104622` (v3.1.1, cam1:R recalibrated 13:40) against phone IMG_4933
