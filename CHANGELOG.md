@@ -5,6 +5,34 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## Walking 2026-11-18 15:25 re-analysed with v3.1.2 - markers vs markerless vs WBDS
+
+`side_session_20261118_122542`, `side_gait_cycles.py` (v3.1.2: no jump-gate lock-out, walking bouts only),
+saved as `validation/gait_cycles_20261118_122542.json` and `validation/walk_20261118_vs_wbds_T01.png`.
+
+| | L markers | L markerless | R markers | R markerless |
+|---|---|---|---|---|
+| strides | 13 | 14 | 7 | 12 |
+| stride time (s) | 2.69 +- 0.58 | | 2.25 +- 0.34 | |
+| swing peak, per-stride median (deg) | 22.1 | 26.9 | 18.9 | 18.3 |
+| swing peak timing (mean curve) | 77 % | 69 % | 68 % | 74 % |
+| stance minimum (mean curve) | 10.0 | 4.0 | 6.0 | 6.0 |
+| r with WBDS 0.50 m/s mean curve | 0.95 | 0.91 | 0.63 | 0.56 |
+
+- **Markerless vs markers, per stride:** the swing-peak difference has a median of +1.1 deg (L, 13 pairs) and
+  +3.8 deg (R, 7 pairs); 10 of 20 pairs are within 5 deg. Outliers: one marker spike (92 deg) and two strides
+  at -14 deg. Whole-curve bias: -5.7 (L) and -0.6 (R) deg. The left bias is in stance, where markers read
+  ~10 deg and markerless ~4 deg. In the holds, standing markers read +8 deg over the phone, so markerless is
+  closer there.
+- **vs healthy walking (WBDS 0.50 m/s):** the timing matches (swing peak at 68-77 % vs 76 %), and the left
+  shape correlates at r = 0.91-0.95. The amplitude is far smaller: swing peak ~16-27 vs 52 deg, ROM 10-16
+  vs 49 deg, and the stride is slower (2.3-2.7 s vs ~1.6 s).
+- The phone video (IMG_4941) shows why: short shuffling steps with the feet barely leaving the floor (phone
+  swing peaks ~20-22 deg). So the small flexion is the walking style, not the measurement. A trial with
+  normal steps is needed for a fair comparison with the dataset.
+- The right leg had markers in only 7 of 12 strides (length gate on 14 % of walking frames, probably the
+  brown shirt next to the hip marker).
+
 ## v3.1.2 - 2026-11-18 (afternoon) - walking fixes: jump-gate lock-out, walking-bout filter
 
 **Issue:** diagnosing the 15:25 walking recording with the new `scripts/side_walk_diag.py`
