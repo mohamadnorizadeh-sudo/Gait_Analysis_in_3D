@@ -34,6 +34,10 @@ consistent with the user's 90 deg setting.
 from dropped frames or filtering, and markers on clothing make it worse. A standing offset cannot fix it, because
 the error grows with flexion.
 
+**Saved for later:** the Mac-side video helpers used for the phone/iPad references on 18-19 Nov are now in
+`validation/mac_tools/` (`blobs.py` tan-marker blobs, `peek.py`/`peek1.py` annotated frames, `grid.py` gridded
+crops for manual reading, `track.py` seeded 3-marker tracking).
+
 **Next:** validate walking against the same kind of far-view reference (iPad on a stand 3-4 m to the side, whole
 body in view, Pi recording at the same time). Then decide on camera placement or a correction.
 
