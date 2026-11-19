@@ -5,6 +5,19 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.1.5 - `scripts/side_dump_kp.py`: ungated markerless dump
+
+**What was wrong:** `side_dump_markerless.py` runs the full SideTracker. Its segment-length gate is referenced to
+the first still period. The 19 Nov 13:23 sit-down session started seated, so that reference was a seated leg and
+most later bins came out empty (e.g. pi t = 26-60 s: no markerless value at all, while the live marker tracker
+read both legs).
+
+**What changed:** new `scripts/side_dump_kp.py` applies no tracker gates. Per frame it takes each leg's pose
+keypoints and prints 0.5 s medians of the plane-mapped flexion (`BINS_PL`), the undistorted-pixel flexion with no
+homography (`BINS_UN`) and the min keypoint confidence x10 (`BINS_CF`). Frames below `--conf` (0.3) are skipped.
+
+---
+
 ## Trial 2026-11-19 12:22 - sit-to-stand with two references (iPhone + iPad), NOT a clean validation
 
 **Why:** the user reports that a gait lab measured a near-normal knee curve (~50 deg swing peak) for the same
