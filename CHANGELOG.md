@@ -5,6 +5,50 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## Trial 2026-11-19 13:23 - sit-down with pauses vs a marker-free far-view reference: the Pi reads far too low
+
+**Why:** the user's gait lab measured a near-normal knee curve (~50 deg swing peak) for the same walker gait for
+which we read ~20-30 deg. The 12:22 trial could not settle it, because its references were cardboard markers on
+loose trousers.
+
+**Setup:** lower chair, three stand/sit cycles with pauses on the way down and up. Markers were near the knee. The
+left trouser leg was taped tight; the right was not. When seated, the user set the knee to ~90 deg. iPhone 13 Pro
+`IMG_4964` filmed the left leg (close, frame cut at mid-thigh). iPad Air `IMG_0012` filmed the right side from
+~2.5 m with the whole body in view. Both were 1080p60. Pi `side_session_20261119_102313`. Clock offsets from
+creation times: iPad +18 s, iPhone +27 s. The iPad reference's stand/sit transitions line up with the Pi traces.
+
+**Reference:** the phone videos' own cardboard markers were unusable: the iPhone's markers read 54-62 deg while
+the user sat at ~90-100 deg. So the reference is a pose model on the far iPad view: MoveNet SinglePose Thunder
+(ONNX), via the new `scripts/ref_movenet.py` (v3.1.6). It reads 1-12 deg standing and 93-109 deg seated,
+consistent with the user's 90 deg setting.
+
+**Findings** (40 plateaus, `validation/sts_20261119b/plateaus.txt`; Pi markerless = `side_dump_kp.py`, ungated):
+- Pi markers (right leg) vs reference: -15 deg at 20 deg, -24 at 40, -33 at 60, and 40-56 deg when seated (~100).
+- Pi markerless, left: -13 to -17 deg across 20-60 deg. Right: +2 at 20, -9 at 40, -19 at 60. Seated 39-76 for ~100.
+- The right camera's pose failed on 2 of 4 standing plateaus: 60 deg for a straight leg (image-plane angle ~128 deg).
+- Pi frames at the 70 deg pause (`pi_frames_L_top_R_bottom_t30_t72.jpg`): the thigh points toward the camera and
+  looks foreshortened, and the pose hip sits at the top edge of the image. A 2D angle from this close, oblique view
+  is not the sagittal knee angle. The plane homography, calibrated on a standing leg, cannot correct it.
+
+**Conclusion:** the under-reading that the gait lab suggested is real. It comes from the measurement geometry, not
+from dropped frames or filtering, and markers on clothing make it worse. A standing offset cannot fix it, because
+the error grows with flexion.
+
+**Next:** validate walking against the same kind of far-view reference (iPad on a stand 3-4 m to the side, whole
+body in view, Pi recording at the same time). Then decide on camera placement or a correction.
+
+## v3.1.6 - `scripts/ref_movenet.py`: marker-free reference from a far side-view video
+
+**What was wrong:** cardboard markers on clothing do not follow the bones, so phone videos tracked by their
+markers are not a ground truth (19 Nov, both trials).
+
+**What changed:** new `scripts/ref_movenet.py` runs MoveNet SinglePose Thunder v4 (ONNX, onnxruntime CPU) on a
+video (via ffmpeg, optional crop) or a frame folder. It writes the image-plane knee flexion and confidences of
+both legs as CSV, and optionally all 17 keypoints. The model is not stored in the repo; its source is in the
+script header.
+
+---
+
 ## v3.1.5 - `scripts/side_dump_kp.py`: ungated markerless dump
 
 **What was wrong:** `side_dump_markerless.py` runs the full SideTracker. Its segment-length gate is referenced to
