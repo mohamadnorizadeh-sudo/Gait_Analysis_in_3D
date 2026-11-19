@@ -5,6 +5,36 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## Trial 2026-11-19 12:22 - sit-to-stand with two references (iPhone + iPad), NOT a clean validation
+
+**Why:** the user reports that a gait lab measured a near-normal knee curve (~50 deg swing peak) for the same
+walker gait for which we read ~20-30 deg, so our swing reading is probably too low. A swing check
+(`side_gait_cycles.py --swing-report`, v3.1.4) on the 18 Nov walk found nothing missing: almost every swing
+frame was valid, with peaks of 13-33 deg. So the low value comes from the measurement, not from dropped frames.
+
+**Setup:** high lab stool behind the walker, 2-3 slow sit-to-stand repetitions with pauses. Markers moved closer
+to the knee (thigh ~20 cm above, shin ~15-18 cm below the knee marker). Loose trousers (no tights), blue shirt.
+iPhone 13 Pro (IMG_4962, right leg) and iPad Air (IMG_0011, left leg), 1080p60, low side views. Pi
+`side_session_20261119_092259`. Reference angles come from the same three cardboard markers, tracked in the
+videos on the user's Mac (seeded nearest-blob tracking with a segment-length check). Clock offsets by correlation
+are iPhone 49.5 s and iPad 43.5 s, matching the files' creation times. r = 0.95 (iPhone vs Pi R markers) and
+0.95 (iPad vs Pi L markerless). Plateau table: `validation/sts_20261119/plateaus.txt`.
+
+**Findings**
+- Right leg, Pi markers vs iPhone (same markers): the Pi reads lower, increasingly so with flexion: -1 to -7 deg
+  below 20 deg, -8 to -12 at 25-40 deg, -16 to -22 at 44-52 deg.
+- Left leg, Pi markerless vs iPad: -7 to -18 deg in mid-range (15-45 deg), -4 to -6 at the seated 66-72 deg.
+- Pi left markers failed: the thigh marker sat ~170 px below the pose hip keypoint, outside the 140 px search
+  radius ("markers -KA" on 780 frames). Pi right markerless was mostly gated out.
+- One frame (`pi_frames_t160R_t170L.png`, Pi t = 160 s, right leg): the three cardboards lie almost on one line
+  on the back half of the leg silhouette. The pose knee keypoint sits ~60 px in front of the knee cardboard.
+  markers 35 deg, markerless 63 deg, iPhone (same cardboards) 52 deg. On loose trousers, with markers near the
+  knee, the cardboards do not follow the bones, so marker angles (Pi AND phone) are not a ground truth here.
+
+**Conclusion:** this test shows the Pi under-reading during hip-flexed postures, consistent with the gait-lab
+report, but it cannot give the true angle. The next reference must not depend on cardboard placement: a
+goniometer/inclinometer at held positions, or a simultaneous gait-lab recording.
+
 ## Validation 2026-11-18 16:30 - MARKERLESS vs phone on the held bends (both days)
 
 Keypoint-only replay (`scripts/side_dump_markerless.py`, no standing offset) of the two hold recordings.
