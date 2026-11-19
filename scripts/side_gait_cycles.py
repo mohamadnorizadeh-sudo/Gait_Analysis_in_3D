@@ -38,6 +38,7 @@ ap.add_argument('--marker-color', default='tan')
 ap.add_argument('--min-stride', type=float, default=0.7)
 ap.add_argument('--max-stride', type=float, default=4.0)
 ap.add_argument('--compact', action='store_true', help='print curves every 2 %% as integers')
+ap.add_argument('--swing-report', action='store_true', help='v3.1.4: per-stride swing frames, valid count, max')
 a = ap.parse_args()
 
 src = dict(kv.split('=') for kv in a.source.split(','))
@@ -49,7 +50,7 @@ ps = SideTracker(pm, SideConfig(source=src, markers=False))
 rows = [json.loads(l) for l in open(os.path.join(a.rec, 'keypoints.jsonl'))]
 cap = cv2.VideoCapture(os.path.join(a.rec, 'raw.mp4'))
 T0 = rows[0]['t']
-rec = {s: {'t': [], 'mk': [], 'ps': [], 'ank': [], 'hip': []} for s in 'LR'}
+rec = {s: {'t': [], 'mk': [], 'ps': [], 'ank': [], 'hip': [], 'mk_st': [], 'ps_st': []} for s in 'LR'}
 for r in rows:
     ok, fr = cap.read()
     if not ok:
@@ -67,6 +68,7 @@ for r in rows:
         d['t'].append(t)
         d['mk'].append(np.nan if om[s].raw is None else om[s].raw)
         d['ps'].append(np.nan if op[s].raw is None else op[s].raw)
+        d['mk_st'].append(om[s].status); d['ps_st'].append(op[s].status)
         if kp is None or min(kp[1]) < 0.3:
             d['ank'].append((np.nan, np.nan)); d['hip'].append((np.nan, np.nan))
         else:
@@ -137,7 +139,16 @@ def strides(d, sign):
                 continue
             tt = (t[seg] - t[i]) / dur * 100
             cur[k] = np.interp(np.arange(101), tt, fill(v))
-        out.append(dict(t=float(t[i]), dur=float(dur), **cur))
+        tt = (t[seg] - t[i]) / dur * 100
+        sw = (tt >= 55) & (tt <= 90)
+        cov = {}
+        for k in ('mk', 'ps'):
+            v = np.asarray(d[k][seg], float)
+            ok = ~np.isnan(v)
+            cov[k] = dict(n=int(sw.sum()), valid=int((sw & ok).sum()),
+                          max_valid=None if not (sw & ok).any() else round(float(v[sw & ok].max()), 1),
+                          missing_status=[st for st, m, o in zip(d[k + '_st'][seg], sw, ok) if m and not o])
+        out.append(dict(t=float(t[i]), dur=float(dur), cov=cov, **cur))
     if len(out) >= 3:                                   # drop strides far from the typical stride time
         med = np.median([x['dur'] for x in out])
         out = [x for x in out if 0.6 * med <= x['dur'] <= 1.6 * med]
@@ -162,7 +173,17 @@ for s in 'LR':
         print(s, 'no strides found')
         continue
     _, sign, st, pk = best
+    if a.swing_report:
+        print('%s swing coverage per stride (frames in 55-90 %% of the cycle; values NOT interpolated):' % s)
+        for x in st:
+            c = x['cov']
+            print('  t=%6.1f dur %.2f | marker %d/%d valid, max %s, missing %s | markerless %d/%d valid, max %s, missing %s' % (
+                x['t'], x['dur'], c['mk']['valid'], c['mk']['n'], c['mk']['max_valid'],
+                ','.join(sorted(set(c['mk']['missing_status']))) or '-',
+                c['ps']['valid'], c['ps']['n'], c['ps']['max_valid'],
+                ','.join(sorted(set(c['ps']['missing_status']))) or '-'))
     r = {'n': len(st), 'sign': sign, 'stride_s': [round(x['dur'], 2) for x in st],
+         'swing_cov': [x['cov'] for x in st],
          'start_s': [round(x['t'], 1) for x in st]}
     for k in ('mk', 'ps'):
         C = np.array([x[k] for x in st if x[k] is not None])
