@@ -37,10 +37,19 @@ the left leg).
 - Pi frames at two swing peaks (`pi_frames_swing_L_t59.9_R_t61.3.jpg`): the camera sees the leg almost straight
   while the reference shows about 45 deg.
 
-**Next:** test whether a constant fore-aft stretch of the calibrated plane explains the gap (new diagnostic
-`scripts/walk_plane_stretch.py`). If the side camera sees the sagittal plane more obliquely than the board
-calibration assumed, walking angles shrink roughly by a constant factor, while a seated 90 deg hardly changes.
-That fits both trials.
+**Plane-stretch diagnostic** (`plane_stretch.txt`, `scripts/walk_plane_stretch.py`): the fore-aft axis of the
+calibrated plane is multiplied by k, and each k is scored against the reference. If the side camera sees the
+sagittal plane more obliquely than the board calibration assumed, walking angles shrink roughly by a constant
+factor, while a seated 90 deg hardly changes. That fits both trials.
+- Stretching by about 2-2.3 brings the swing-peak size to the reference (p95 ratio 0.48 -> 0.87-0.96 left,
+  0.53 -> 0.98 right) and the mean bias to about 0.
+- It does not fix frame-by-frame agreement: left r about 0.5, RMSE about 11 deg; right r about 0.2, RMSE 13-16 deg.
+  So the plane orientation explains the size of the under-read, but not the scatter.
+
+**Next options:** (1) redo the board calibration with the board flat on the outer thigh, parallel to the walking
+direction, and repeat this walking test; (2) aim the cameras squarely at the side of the leg, whole leg in view;
+(3) self-calibrate the plane from walking; (4) make the live standing calibration reject impossible poses (the
+right camera's 63 deg "standing" reading).
 
 ## v3.1.9 - walking comparison tools
 
