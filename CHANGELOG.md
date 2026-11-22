@@ -5,6 +5,38 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## Trial 2026-11-22 13:01 - walking after the two-camera calibration: still ~0.6-0.75x at swing peaks
+
+**Setup:** cameras re-aimed at 12:20; planes from `stereo_sagittal_calib.py` (v3.2.1: both cameras see the knee
+plane 46-52 deg off a true side view; board edge vs camera baseline 1.6 deg). Markerless. iPad `IMG_0018`
+(1080p60) ~5 m to the side. Pi `side_session_20261122_100105`, 279 s, 9.4 fps. Reference: MoveNet with a
+person-following crop (`validation/walk_20261122b/`). Clock: knee bends r = 0.95, then a per-pass drift fit
+(+0.17 %: t_ref = t_pi + 13.14 + 0.0017 t_pi). 8 passes, 99 reference swing peaks.
+
+**Results** (export with the v3.2.3 undistortion; `walk_compare_channels.py`):
+
+| Swing peak (median) | Reference | Plane, own camera | 3D, both cameras | Plane, other camera |
+|---|---|---|---|---|
+| left, near the iPad | 43.5 | 25.6 (x0.59) | 29.8 (x0.70) | 30.4 (x0.70) |
+| left, far | 49.0 | 30.2 (x0.59) | 34.5 (x0.72) | 35.9 (x0.72) |
+| right, near | 33.1 | 22.1 (x0.55) | 33.2 (x0.74) | 34.9 (x0.77) |
+| right, far | 55.0 | 29.1 (x0.51) | 37.4 (x0.66) | 38.8 (x0.68) |
+
+Frame by frame inside the passes: plane own camera r 0.76 / 0.69 (slope 0.49 / 0.38); 3D r 0.70 / 0.79
+(slope 0.46 / 0.52); other camera r 0.62 / 0.74.
+- The v3.2.3 undistortion fix took the right camera from r 0.19 to 0.69, but did not change the scale.
+- Each leg is measured better by the camera on the **opposite** side, which sees it more from the side.
+- 3D keypoint consistency is poor: reprojection 12 / 16 px median. In swing (3D flexion > 30 deg), the 3D thigh
+  shortens from 44 to 38 cm and the shank lengthens from 43 to 48-53 cm. So the pose keypoints slide along the leg
+  in swing (the knee point moves up the thigh, the ankle point moves away), which flattens the measured angle.
+- The reference itself differs by side (right leg 33 deg near vs 55 deg far). The lab's ~50 deg matches the far
+  side.
+- Conclusion: geometry (plane orientation, lens model) is no longer the main error. The leg keypoints from the pose
+  model in these close, front-diagonal views under-represent swing flexion. Also, 9.4 fps samples a ~0.3 s swing
+  peak coarsely.
+
+---
+
 ## v3.2.3 - 2026-11-22 - fisheye undistortion that does not break near the image edge
 
 **What was wrong:** the walker cameras' fisheye intrinsics (from the old stereo calibration) have large
