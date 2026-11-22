@@ -5,6 +5,22 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.2.4 - 2026-11-22 - live aiming aid for side-on cameras; stronger pose model gives the same small bend
+
+**Why:** MoveNet Thunder (the reference model) run offline on all 2813 frames of the 13:01 Pi video (copied to the
+Mac) gave the same raw image swing peaks as the Pi's YOLOv8m-pose: 26-32 deg vs 46-51 deg in the reference
+(x0.53-0.74). Two different models agree, so the cameras' front-diagonal view (most of the knee bend points
+toward or away from the lens) is the main limit, not the pose model. The cameras are being moved to true side
+views, and the user asked for live guidance while moving them.
+
+**What changed:** `side_view.py` draws a bar at the bottom of each camera image: the estimated angle off a true side
+view (from how far apart the left and right hip, knee and ankle are in the image, relative to the near leg's
+length: asin(gap x 85 / 25 cm)), and the leg's share of the image height. Green when under 20 deg with hip, knee
+and ankle all in view. The same line is printed. On the 13:01 standing frames it gives 42 / 40 deg (board
+calibration: 46 / 52 deg).
+
+---
+
 ## Trial 2026-11-22 13:01 - walking after the two-camera calibration: still ~0.6-0.75x at swing peaks
 
 **Setup:** cameras re-aimed at 12:20; planes from `stereo_sagittal_calib.py` (v3.2.1: both cameras see the knee

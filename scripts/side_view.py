@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Live side-by-side view of both cameras (v2.20, side-camera setup).
+"""Live side-by-side view of both cameras (v2.20, side-camera setup; aiming aid v3.2.4).
 
 Shows cam0 | cam1 next to each other on the Pi screen with the leg keypoints drawn,
 prints once a second whether hip, knee and ankle of each leg are inside each image,
@@ -58,8 +58,35 @@ def annotate(img, name, people_out=None):
                         cv2.circle(img, pt, 6, COL[side], -1)
                 status += f" {side}:" + ''.join('HKA'[k] if ok[k] else '-' for k in range(3))
                 status += '(%.2f y%s)' % (min(p.conf[j] for j in ix), '/'.join('%.0f' % (100 * p.xy[j][1] / h) for j in ix))
+        if p is not None:
+            status += aim(img, name, p)
     cv2.putText(img, name, (8, 26), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
     return status
+
+
+def aim(img, name, p):
+    """v3.2.4 aiming aid: how side-on this camera sees its leg (cam0 -> left, cam1 -> right).
+
+    In a true side view the two legs overlap in the image; seen from the front they are a hip-width apart. The
+    mean horizontal gap between the left and right hip, knee and ankle, relative to the near leg's length (~85 cm),
+    gives roughly the angle off a side view: asin(gap * 85 / 25 cm). Drawn large on the image and printed."""
+    h, w = img.shape[:2]
+    near = 'L' if name == 'cam0' else 'R'
+    xy, c = np.asarray(p.xy, float), np.asarray(p.conf, float)
+    ix = JOINTS[near]
+    leg = np.linalg.norm(xy[ix[0]] - xy[ix[1]]) + np.linalg.norm(xy[ix[2]] - xy[ix[1]])
+    inview = all(c[j] >= 0.5 and 4 < xy[j][0] < w - 4 and 4 < xy[j][1] < h - 4 for j in ix)
+    pairs = [(a_, b_) for a_, b_ in zip(JOINTS['L'], JOINTS['R']) if c[a_] >= 0.3 and c[b_] >= 0.3]
+    if leg < 40 or not pairs:
+        msg, ang = 'aim: leg not found', None
+    else:
+        gap = float(np.mean([abs(xy[a_][0] - xy[b_][0]) for a_, b_ in pairs])) / leg
+        ang = float(np.degrees(np.arcsin(min(1.0, gap * 85.0 / 25.0))))
+        msg = 'off side ~%2.0f deg  leg %2.0f%% of height%s' % (ang, 100 * leg / h, '' if inview else '  HIP/KNEE/ANKLE NOT ALL IN VIEW')
+    col = (0, 200, 0) if ang is not None and ang < 20 and inview else (0, 200, 255) if ang is not None and ang < 35 else (0, 0, 255)
+    cv2.rectangle(img, (0, h - 34), (w, h), (0, 0, 0), -1)
+    cv2.putText(img, msg[:44], (6, h - 12), cv2.FONT_HERSHEY_SIMPLEX, 0.45, col, 1)
+    return ' AIM[%s]' % msg
 
 
 last_print, t_end = 0.0, time.time() + a.seconds
