@@ -5,6 +5,22 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.1.7 - camera check script; markerless by default for the walking validation
+
+**Why:** the next trial (22 Nov) validates markerless walking against the far-view iPad reference (MoveNet), so
+no markers are worn. With `MARKERS=1` the live tracker would reject every frame for missing markers. The camera
+check (has a side camera moved on the walker since the board calibration?) was done by hand before.
+
+**What changed**
+- `config/side.env`: `MARKERS=0` (markerless live angle with the standing offset). Recordings still keep
+  `raw.mp4` + `keypoints.jsonl`, so markers can be replayed later if wanted.
+- New `scripts/cam_check.py`: ORB match of the current `runs/side_view.jpg` against a frame of a reference
+  recording. It reports, per camera, the dominant shift/rotation/scale and the median shift of the matches in
+  the lower 40 % of the image (walker tubes and wheel, which move only if the camera moved on the walker).
+  It also writes `runs/cam_check.jpg`.
+
+---
+
 ## Trial 2026-11-19 13:23 - sit-down with pauses vs a marker-free far-view reference: the Pi reads far too low
 
 **Why:** the user's gait lab measured a near-normal knee curve (~50 deg swing peak) for the same walker gait for
