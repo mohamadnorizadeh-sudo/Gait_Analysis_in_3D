@@ -5,6 +5,54 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## Trial 2026-11-22 11:15 - walking vs a far-view iPad reference: the Pi reads about half the knee bend
+
+**Why:** the 19 Nov sit-down showed the Pi under-reading with the hip flexed. The question for the product is
+walking.
+
+**Setup:** markerless (v3.1.7, `MARKERS=0`), cameras checked unchanged (`cam_check.py`: cam0 < 1 px, cam1 2-4 px /
+0.3 deg). iPad Air `IMG_0017` (1080p60) on a stand ~5 m to the side at hip height, whole body in view. Protocol:
+stand still 5 s, 2 slow knee bends, then 8 passes past the iPad (4 each way). Pi
+`side_session_20261122_081509`, 266 s.
+
+**Reference:** MoveNet Thunder with a person-following crop on the iPad video (new
+`scripts/ref_movenet_track.py`). Clock offset from the knee bends: t_iPad = t_Pi + 15.98 s, r = 0.99. All 8
+passes were found automatically. MoveNet's left/right labels matched the Pi's legs in every pass (r 0.56-0.83 for
+the left leg).
+
+**Findings** (`validation/walk_20261122/`, new `scripts/walk_compare_ref.py`, 103 swing peaks):
+
+| Leg, side facing the iPad | Reference swing peak | Pi markerless | Ratio |
+|---|---|---|---|
+| left, near | 39 deg | 20 deg | 0.51 |
+| left, far | 46 deg | 21 deg | 0.45 |
+| right, near | 31 deg | 18 deg | 0.58 |
+| right, far | 47 deg | 20 deg | 0.48 |
+
+- The Pi's peaks line up in time with the reference's peaks but are about half as high (all strides: Pi = 0.46 x
+  ref + 3; per frame r 0.67 left, 0.47 right). This matches the gait lab's ~50 deg against our ~20-25 deg.
+- **The right camera's live output failed:** during the standing calibration, its pose model read the straight
+  leg as about 63 deg. The resulting length reference made the gate reject 84 % of the right leg's walking frames
+  (`length gate` 2287 of 2726). The left leg was fine (89 % ok).
+- Pi frames at two swing peaks (`pi_frames_swing_L_t59.9_R_t61.3.jpg`): the camera sees the leg almost straight
+  while the reference shows about 45 deg.
+
+**Next:** test whether a constant fore-aft stretch of the calibrated plane explains the gap (new diagnostic
+`scripts/walk_plane_stretch.py`). If the side camera sees the sagittal plane more obliquely than the board
+calibration assumed, walking angles shrink roughly by a constant factor, while a seated 90 deg hardly changes.
+That fits both trials.
+
+## v3.1.9 - walking comparison tools
+
+- `scripts/ref_movenet_track.py`: far-view reference with a person-following crop. Writes t, flex_L, flex_R,
+  confidences and mid-hip x per frame.
+- `scripts/walk_compare_ref.py`: clock offset from a sync window, walking passes, swing peaks reference vs Pi
+  (ungated markerless and live).
+- `scripts/walk_plane_stretch.py`: diagnostic that scales the fore-aft axis of the plane coordinates by k and
+  scores each k against the reference.
+
+---
+
 ## v3.1.8 - `scripts/side_export_series.py`: per-frame series over the remote shell
 
 **What was wrong:** walking needs every frame (about 10 fps), not the 0.5 s bins that `side_dump*.py` print.

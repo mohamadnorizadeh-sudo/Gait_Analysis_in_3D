@@ -1,0 +1,9 @@
+# walking passes in iPad time (s); dir -1 = walking left (right side faces the iPad), +1 = walking right (left side faces it)
+37.7 56.5 -1
+64.3 85.6 +1
+93.4 113.7 -1
+122.4 141.8 +1
+150.8 167.0 -1
+175.4 191.2 +1
+200.4 217.5 -1
+225.5 239.7 +1
