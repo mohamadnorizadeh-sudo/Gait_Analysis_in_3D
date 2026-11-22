@@ -5,6 +5,39 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.2.0 - 2026-11-22 - knee planes from one board seen by both cameras (`stereo_sagittal_calib.py`)
+
+**What was wrong:** after the cameras were re-aimed (about 12:20), the hand-held side board failed twice: "board
+not found" in both cameras. A snapshot (kept on the Pi in `runs/board_try/`, not committed because it shows the
+user) showed two causes:
+- a fingertip over the top row of squares in 3 of 6 frames, which stops detection (the other 3 were detected);
+- the board that was detected faced the camera (slant 11-14 deg, 50 cm), not the side. The cameras see the legs
+  front-diagonally. A board flat on the outside of the leg is then too slanted to detect at 360x640, and a board
+  turned toward the camera is not the plane the knee bends in. That mismatch is what made the 11:15 walking
+  angles about half.
+
+**What changed:** new `scripts/stereo_sagittal_calib.py`.
+- One board, held upright in front of the knees and facing straight ahead, is seen by both cameras at once.
+- solvePnP in each camera gives both camera positions. It uses a board frame that does not depend on the
+  detector's corner order: pattern centre, the normal toward the cameras, and the edge nearest image-up.
+- The walker's left-right axis (the knee plane's normal) is estimated twice: from the line between the two
+  cameras (assumes symmetric mounting), and from the board's left-right edge (assumes it faced straight ahead).
+  The angle between the two is printed as a cross-check. By default the normal is their mean.
+- Each camera gets the homography of a plane with that normal beside each leg: `cam0:L`, `cam0:R`, `cam1:L`,
+  `cam1:R`. Any plane parallel to the knee's plane gives the same angles, because central projection between
+  parallel planes is a uniform scaling. So the board does not have to touch the leg.
+- The camera poses are saved to `config/stereo_board.json`, so the two views can also be triangulated in 3D
+  offline (`keypoints.jsonl` already keeps both legs in both cameras).
+- Frames are kept in `runs/stereo_calib/<stamp>/`. The classic corner detector runs first, with the sector-based
+  detector (`findChessboardCornersSB`) as a fallback.
+
+**Synthetic check** (`scripts/check_stereo_sagittal_synth.py`: two fisheye cameras rendered 61 deg off a true side
+view, like the walker's). With the exact normal, the plane-mapped flexion is within 0.5 deg of the true 3D angle
+over 0-60 deg. A 5 deg error in the normal gives up to 4-6 deg of error at 60 deg flexion; the mean of the two
+estimates halves that.
+
+---
+
 ## Trial 2026-11-22 11:15 - walking vs a far-view iPad reference: the Pi reads about half the knee bend
 
 **Why:** the 19 Nov sit-down showed the Pi under-reading with the hip flexed. The question for the product is
