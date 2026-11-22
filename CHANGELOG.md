@@ -5,6 +5,42 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.3.0 - 2026-11-22 (evening) - learned knee angle from both cameras: 94 % of the reference swing peak
+
+**Why:** every geometric fix so far (plane calibration, two-camera calibration, 3D triangulation, the lens
+fix) left walking swing peaks at 0.55-0.75x the reference, and MoveNet on the Pi frames saw the same small image
+bend as YOLOv8. The camera view loses the bend in any single flat angle. The positions of all six leg points
+in both views still change consistently with it.
+
+**Test (laptop, 13:01 walk):** inputs per frame = hips, knees and ankles of both legs in both cameras (relative to
+the hip midpoint / leg length), their confidences, both raw 2D angles, plus the previous and next frame. Target =
+the iPad reference angle after the automatic clock alignment. Leave one pass out (8 passes, ~1590 frames):
+
+| Model | Leg | r | RMSE | Swing peak vs reference | Median peak error |
+|---|---|---|---|---|---|
+| gradient boosting | L | 0.89 | 6.1 | 44.0 vs 45.0 | 5.3 |
+| gradient boosting | R | 0.91 | 6.2 | 47.5 vs 48.8 | 6.8 |
+| ridge | L | 0.89 | 6.1 | 44.3 vs 45.0 | 5.4 |
+| ridge | R | 0.88 | 7.0 | 45.0 vs 48.8 | 9.2 |
+
+Per held-out pass the RMSE stayed in 4.3-8.0 deg. Figures: `validation/walk_20261122b/learned_vs_live_pass5.png`,
+`swing_peak_share_by_method.png`.
+
+**Caveats:** one person, one 4-min walk, one camera position (the model must be retrained after any camera move);
+labels carry the iPad reference's own errors (near/far side); this test used MoveNet keypoints run on the laptop,
+and the deployed model must be trained on the Pi's YOLOv8 keypoints (already in every session's keypoints.jsonl).
+
+**What changed:** new `scripts/train_angle_model.py`: loads Pi sessions + reference CSVs, aligns the clocks itself
+(knee-bend offset + per-pass drift), builds the features, validates (leave one session out, or one pass out for a
+single session), and saves a gradient-boosting model (`.pkl`) and a ridge model as plain numbers (`_ridge.json`).
+Tested end to end on the 13:01 walk (results above).
+
+**Plan (23 Nov deadline):** fix the cameras once and mark the mounts; record 3-4 walks with the iPad; train on the
+laptop on the Pi's YOLOv8 keypoints; add the model to the live tracker with the plane method as a fallback; validate
+on one new walk never used in training. Pass: swing peak within 5 deg of the reference on both legs.
+
+---
+
 ## v3.2.4 - 2026-11-22 - live aiming aid for side-on cameras; stronger pose model gives the same small bend
 
 **Why:** MoveNet Thunder (the reference model) run offline on all 2813 frames of the 13:01 Pi video (copied to the
