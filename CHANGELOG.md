@@ -5,6 +5,18 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.1.8 - `scripts/side_export_series.py`: per-frame series over the remote shell
+
+**What was wrong:** walking needs every frame (about 10 fps), not the 0.5 s bins that `side_dump*.py` print.
+The Pi's only channel to the analysis machine is the remote-shell text.
+
+**What changed:** new `scripts/side_export_series.py` writes one base64 line (zlib npz, delta-encoded) with, per
+frame: the ungated plane-mapped markerless flexion and keypoint confidence of both legs (from
+`keypoints.jsonl`), plus the live tracker output, raw angle and status (from `angles.csv`). A 2,700-frame
+session is about 10-25 k characters. `decode()` in the same file turns it back into arrays.
+
+---
+
 ## v3.1.7 - camera check script; markerless by default for the walking validation
 
 **Why:** the next trial (22 Nov) validates markerless walking against the far-view iPad reference (MoveNet), so
