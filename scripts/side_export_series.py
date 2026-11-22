@@ -58,10 +58,11 @@ def triangulate(st, pm, xy0, xy1):
     """3D hip, knee, ankle (cm, board frame of stereo_sagittal_calib) from cam0 and cam1 pixels.
     Returns (3x3 points, reprojection rms px)."""
     import cv2
+    from gait3d.side2d import fisheye_normalize
     ns, Ps, fs = [], [], []
     for cam, xy in (('cam0', xy0), ('cam1', xy1)):
         c = pm.cams[cam]
-        ns.append(cv2.fisheye.undistortPoints(np.asarray(xy, float).reshape(-1, 1, 2), c['K'], c['D']).reshape(-1, 2))
+        ns.append(fisheye_normalize(xy, c['K'], c['D']))       # v3.2.3: robust near the image edge
         Ps.append(np.hstack([np.array(st['cams'][cam]['R'], float), np.array(st['cams'][cam]['t'], float).reshape(3, 1)]))
         fs.append(float(c['K'][0, 0]))
     X = cv2.triangulatePoints(Ps[0], Ps[1], ns[0].T, ns[1].T)

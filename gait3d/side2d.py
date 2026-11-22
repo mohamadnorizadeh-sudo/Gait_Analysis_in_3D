@@ -42,6 +42,44 @@ def flexion_2d(hip, knee, ankle) -> Optional[float]:
 
 
 # ---------------------------------------------------------------------- #
+# fisheye undistortion that stays on the right branch (v3.2.3)
+# ---------------------------------------------------------------------- #
+def fisheye_normalize(pts, K, D) -> np.ndarray:
+    """Distorted pixels -> undistorted normalized coordinates (x/z, y/z), OpenCV fisheye model.
+
+    v3.2.3: the walker intrinsics have large high-order terms (k3 ~ 1.0, k4 ~ -0.9), so
+    theta_d(theta) = theta (1 + k1 t^2 + k2 t^4 + k3 t^6 + k4 t^8) turns back at theta ~ 1 rad. Near the bottom
+    edge of the portrait image (the ankles, y > ~600 px), cv2.fisheye.undistortPoints then returns -1e6 or
+    jumps to the second branch (a point 310 px from the centre moved 560 px). Here theta is taken from the
+    first, monotonic branch (table lookup + 3 Newton steps), and clamped at the turning point."""
+    pts = np.asarray(pts, float).reshape(-1, 2)
+    K = np.asarray(K, float)
+    k = np.asarray(D, float).ravel()
+    yd = (pts[:, 1] - K[1, 2]) / K[1, 1]
+    xd = (pts[:, 0] - K[0, 2] - K[0, 1] * yd) / K[0, 0]
+    rd = np.hypot(xd, yd)
+    poly = lambda t: t * (1 + k[0] * t ** 2 + k[1] * t ** 4 + k[2] * t ** 6 + k[3] * t ** 8)
+    dpoly = lambda t: 1 + 3 * k[0] * t ** 2 + 5 * k[1] * t ** 4 + 7 * k[2] * t ** 6 + 9 * k[3] * t ** 8
+    th = np.linspace(0.0, 1.55, 3101)
+    f = poly(th)
+    bad = np.nonzero(np.diff(f) <= 0)[0]
+    n = int(bad[0]) + 1 if len(bad) else len(th)
+    th, f = th[:n], f[:n]
+    t = np.interp(np.minimum(rd, f[-1]), f, th)
+    for _ in range(3):
+        t = np.clip(t - (poly(t) - np.minimum(rd, f[-1])) / dpoly(t), 0.0, th[-1])
+    s = np.where(rd > 1e-12, np.tan(t) / np.maximum(rd, 1e-12), 1.0)
+    return np.column_stack([xd * s, yd * s])
+
+
+def fisheye_undistort(pts, K, D) -> np.ndarray:
+    """Distorted pixels -> undistorted pixels with the same K (like cv2.fisheye.undistortPoints(P=K))."""
+    n = fisheye_normalize(pts, K, D)
+    K = np.asarray(K, float)
+    return np.column_stack([K[0, 0] * n[:, 0] + K[0, 1] * n[:, 1] + K[0, 2], K[1, 1] * n[:, 1] + K[1, 2]])
+
+
+# ---------------------------------------------------------------------- #
 # camera -> sagittal plane mapping
 # ---------------------------------------------------------------------- #
 class PlaneMap:
@@ -84,8 +122,7 @@ class PlaneMap:
         c = self.cams.get(cam)
         if c is None:
             return pts
-        import cv2
-        return cv2.fisheye.undistortPoints(pts.reshape(-1, 1, 2), c["K"], c["D"], P=c["K"]).reshape(-1, 2)
+        return fisheye_undistort(pts, c["K"], c["D"])          # v3.2.3: not cv2.fisheye (wrong branch at the edge)
 
     def has_plane(self, cam, leg):
         return f"{cam}:{leg}" in self.planes

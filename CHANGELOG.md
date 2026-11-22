@@ -5,6 +5,28 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.2.3 - 2026-11-22 - fisheye undistortion that does not break near the image edge
+
+**What was wrong:** the walker cameras' fisheye intrinsics (from the old stereo calibration) have large
+high-order terms: cam0 D = [0.313, -0.161, 1.058, -0.914], cam1 D = [0.290, -0.084, 0.905, -0.769]. The model
+theta_d(theta) then turns back at theta ~ 1 rad. Beyond about 250-280 px from the image centre,
+`cv2.fisheye.undistortPoints` either returned -1e6 or jumped to the second branch (a point 310 px from the
+centre was moved 560 px). In the portrait 360x640 image that zone is the bottom edge, where the ankles are: the
+right camera's ankles sit at y = 600-615 px. On the 13:01 walk, 97th-percentile knee angles after undistortion
+were 121-127 deg in the right camera (raw pixels: 19-33 deg). This is why the right camera's angles correlated so
+poorly with the reference (r = 0.19), and why 3D triangulation had 13-16 px reprojection error.
+
+**What changed:** `gait3d/side2d.py` has `fisheye_normalize()` / `fisheye_undistort()`. They invert the same
+OpenCV fisheye model on its first, monotonic branch (table lookup + 3 Newton steps), clamped at the turning
+point. `PlaneMap.undistort` and the 3D triangulation in `side_export_series.py` use them. On a 4-px grid over
+the whole image they match OpenCV exactly where OpenCV works (radius < 250 px, max difference 0.0000 px). Round
+trips through `cv2.fisheye.distortPoints` give back the input (0.0000 px for cam1; up to 4.3 px for cam0, only
+at the extreme corners beyond the turning point). Plane homographies and camera poses did not change: they came
+from board corners near the image centre. New `scripts/walk_compare_channels.py` compares any set of Pi channels
+(plane, 3D, other camera) with the far-view reference.
+
+---
+
 ## v3.2.2 - 2026-11-22 - export adds 3D-triangulated knee flexion from both cameras
 
 **Why:** after the two-camera calibration both cameras see both legs, and `config/stereo_board.json` holds their
