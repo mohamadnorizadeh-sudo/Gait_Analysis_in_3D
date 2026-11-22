@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export a side session's per-frame angle series as ONE compact text line (v3.1.8).
+"""Export a side session's per-frame angle series as ONE compact text line (v3.1.8, 3D in v3.2.2).
 
 The Pi's only channel to the analysis machine is the remote-shell text, so walking analyses (which need every
 frame, not 0.5 s bins) get the series as base64(zlib(npz)), delta-encoded and stored column by column to keep
@@ -12,6 +12,11 @@ it short. Arrays in the npz:
   kp_c       uint8    (2, N) x100: min(hip, knee, ankle) keypoint confidence L, R
   an         int16    (4, N) x10 deg, first-differenced: live L_flexion, R_flexion, L_raw, R_raw; -32768 = empty
   an_s       uint8    (2, N) status code L, R; codes = newline-separated status strings
+  v3.2.2, when config/stereo_board.json exists (stereo_sagittal_calib.py --save), per keypoints frame:
+  k3         int16    (2, N) x10 deg, first-differenced: 3D flexion L, R triangulated from BOTH cameras
+  k2x        int16    (2, N) x10 deg, first-differenced: plane flexion of each leg seen by the OTHER camera
+  e3         uint16   (2, N) x10 px: triangulation reprojection rms (hip, knee, ankle, both views); 0 = none
+  l3         uint16   (4, N) x10 cm: 3D thigh L, shank L, thigh R, shank R; 0 = none
 
   python3 scripts/side_export_series.py runs/<session> [--min-leg-px 170] > /tmp/series.b64
   python3 -c "from side_export_series import decode; d = decode(open('series.b64').read())"
@@ -36,10 +41,36 @@ def _undiff(d):
 
 def decode(text):
     d = np.load(io.BytesIO(zlib.decompress(base64.b64decode(text.strip()))))
-    return {'kp_t': float(d['t0']) + np.cumsum(d['kp_dt'].astype(np.int64)) / 1000.0,
-            'kp': _undiff(d['kp']), 'kp_c': d['kp_c'].T / 100.0,
-            'an_t': float(d['an_t0']) + np.cumsum(d['an_dt'].astype(np.int64)) / 1000.0,
-            'an': _undiff(d['an']), 'an_s': d['an_s'].T, 'codes': str(d['codes']).split('\n')}
+    out = {'kp_t': float(d['t0']) + np.cumsum(d['kp_dt'].astype(np.int64)) / 1000.0,
+           'kp': _undiff(d['kp']), 'kp_c': d['kp_c'].T / 100.0,
+           'an_t': float(d['an_t0']) + np.cumsum(d['an_dt'].astype(np.int64)) / 1000.0,
+           'an': _undiff(d['an']), 'an_s': d['an_s'].T, 'codes': str(d['codes']).split('\n')}
+    if 'k3' in d:
+        out['k3'], out['k2x'] = _undiff(d['k3']), _undiff(d['k2x'])
+        for k in ('e3', 'l3'):
+            v = d[k].T.astype(float) / 10.0
+            v[v == 0] = np.nan
+            out[k] = v
+    return out
+
+
+def triangulate(st, pm, xy0, xy1):
+    """3D hip, knee, ankle (cm, board frame of stereo_sagittal_calib) from cam0 and cam1 pixels.
+    Returns (3x3 points, reprojection rms px)."""
+    import cv2
+    ns, Ps, fs = [], [], []
+    for cam, xy in (('cam0', xy0), ('cam1', xy1)):
+        c = pm.cams[cam]
+        ns.append(cv2.fisheye.undistortPoints(np.asarray(xy, float).reshape(-1, 1, 2), c['K'], c['D']).reshape(-1, 2))
+        Ps.append(np.hstack([np.array(st['cams'][cam]['R'], float), np.array(st['cams'][cam]['t'], float).reshape(3, 1)]))
+        fs.append(float(c['K'][0, 0]))
+    X = cv2.triangulatePoints(Ps[0], Ps[1], ns[0].T, ns[1].T)
+    X = (X[:3] / X[3]).T
+    err = []
+    for P, n, f in zip(Ps, ns, fs):
+        q = P @ np.vstack([X.T, np.ones(len(X))])
+        err.append(np.sum((q[:2] / q[2] - n.T) ** 2, 0) * f * f)
+    return X, float(np.sqrt(np.mean(np.concatenate(err))))
 
 
 def _diff(v):
@@ -59,27 +90,48 @@ def main():
     ap.add_argument('--planes', default='config/side_planes.json')
     ap.add_argument('--source', default='L=cam0,R=cam1')
     ap.add_argument('--min-leg-px', type=float, default=170.0)
+    ap.add_argument('--min-leg-px-far', type=float, default=100.0, help='leg seen by the other camera (v3.2.2)')
+    ap.add_argument('--stereo', default='config/stereo_board.json', help='camera poses for 3D (v3.2.2); "" = skip')
     a = ap.parse_args()
     src = dict(kv.split('=') for kv in a.source.split(','))
+    oth = {s: ({'cam0', 'cam1'} - {src[s]}).pop() for s in 'LR'}
     pm = PlaneMap.load(a.planes)
+    st = json.load(open(a.stereo)) if a.stereo and os.path.exists(a.stereo) else None
 
-    kt, kv, kc = [], [], []
+    kt, kv, kc, k3, k2x, e3, l3 = [], [], [], [], [], [], []
     for line in open(os.path.join(a.rec, 'keypoints.jsonl')):
         r = json.loads(line)
         kt.append(r['t'])
-        vals, confs = [], []
+        vals, confs, v3, vx, ee, ll = [], [], [], [], [], []
         for s in 'LR':
             kp = leg_keypoints(r.get(src[s], []), s, a.min_leg_px)
-            if kp is None:
-                vals.append(NA)
-                confs.append(0)
-                continue
-            xy, c = np.asarray(kp[0], float), np.asarray(kp[1], float)
-            f = flexion_2d(*pm.to_plane(src[s], s, xy))
+            kf = leg_keypoints(r.get(oth[s], []), s, a.min_leg_px_far) if st else None
+            f = None
+            if kp is not None:
+                f = flexion_2d(*pm.to_plane(src[s], s, np.asarray(kp[0], float)))
             vals.append(NA if f is None else int(round(f * 10)))
-            confs.append(int(round(100 * float(c.min()))))
+            confs.append(0 if kp is None else int(round(100 * float(np.min(kp[1])))))
+            if st is None:
+                continue
+            g = None if kf is None else flexion_2d(*pm.to_plane(oth[s], s, np.asarray(kf[0], float)))
+            vx.append(NA if g is None else int(round(g * 10)))
+            h, e, L2 = None, 0, (0, 0)
+            if kp is not None and kf is not None:
+                xy = {src[s]: kp[0], oth[s]: kf[0]}
+                X, rms = triangulate(st, pm, xy['cam0'], xy['cam1'])
+                h = flexion_2d(*X)
+                e = min(65535, int(round(rms * 10)))
+                L2 = tuple(min(65535, int(round(10 * float(np.linalg.norm(X[j] - X[1]))))) for j in (0, 2))
+            v3.append(NA if h is None else int(round(h * 10)))
+            ee.append(e)
+            ll.extend(L2)
         kv.append(vals)
         kc.append(confs)
+        if st is not None:
+            k3.append(v3)
+            k2x.append(vx)
+            e3.append(ee)
+            l3.append(ll)
 
     at, av, ast, codes = [], [], [], []
     for r in csv.DictReader(open(os.path.join(a.rec, 'angles.csv'))):
@@ -96,10 +148,13 @@ def main():
 
     kt, at = np.array(kt), np.array(at)
     buf = io.BytesIO()
+    extra = {}
+    if st is not None:
+        extra = dict(k3=_diff(k3), k2x=_diff(k2x), e3=np.array(e3, np.uint16).T.copy(), l3=np.array(l3, np.uint16).T.copy())
     np.savez(buf, t0=np.float64(kt[0]), kp_dt=np.r_[0, np.round(np.diff(kt) * 1000)].astype(np.uint16),
              kp=_diff(kv), kp_c=np.array(kc, np.uint8).T.copy(),
              an_t0=np.float64(at[0]), an_dt=np.r_[0, np.round(np.diff(at) * 1000)].astype(np.uint16),
-             an=_diff(av), an_s=np.array(ast, np.uint8).T.copy(), codes=np.array('\n'.join(codes)))
+             an=_diff(av), an_s=np.array(ast, np.uint8).T.copy(), codes=np.array('\n'.join(codes)), **extra)
     sys.stdout.write(base64.b64encode(zlib.compress(buf.getvalue(), 9)).decode() + '\n')
 
 

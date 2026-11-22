@@ -5,6 +5,24 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.2.2 - 2026-11-22 - export adds 3D-triangulated knee flexion from both cameras
+
+**Why:** after the two-camera calibration both cameras see both legs, and `config/stereo_board.json` holds their
+poses. A 3D angle from the two views does not depend on the knee-plane orientation at all, so it is the natural
+check of the plane method (and a candidate for the product).
+
+**What changed:** `side_export_series.py` adds, per keypoints frame:
+- `k3`: 3D flexion of each leg, triangulated from cam0 and cam1 (fisheye-undistorted keypoints, linear
+  triangulation in the calibration board frame);
+- `k2x`: plane flexion of each leg from the other camera (cam1 for the left leg, cam0 for the right);
+- `e3`: triangulation reprojection rms (px), and `l3`: 3D thigh and shank lengths (cm), to judge the quality of
+  each frame.
+The leg seen by the far camera uses its own length gate (`--min-leg-px-far`, 100 px). On synthetic two-camera
+walking data, `k3` is within 0.15 deg of the true angle, with 0.2 px reprojection error and the exact segment
+lengths.
+
+---
+
 ## v3.2.1 - 2026-11-22 - board detection for the two-camera calibration: 2x upscale + local contrast
 
 **What was wrong:** the first two-camera capture (12:52, `runs/stereo_calib/20261122_095158/` on the Pi) found the
