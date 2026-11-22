@@ -5,6 +5,20 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.2.1 - 2026-11-22 - board detection for the two-camera calibration: 2x upscale + local contrast
+
+**What was wrong:** the first two-camera capture (12:52, `runs/stereo_calib/20261122_095158/` on the Pi) found the
+board in only 1 of 24 views (left camera, slant 47 deg, 61 cm). Facing straight ahead, the board is seen by each
+camera about 45-50 deg off face-on, so its squares are only ~6-11 px wide at 360x640. The right camera also saw it
+in shadow against a bright window.
+
+**What changed:** `find()` in `stereo_sagittal_calib.py` now tries, in order: plain detection, then 2x upscale +
+CLAHE (classic, then sector-based), then 3x + CLAHE (sector-based). Corners are mapped back to the original
+pixels. On the 12:52 frames the right camera went from 0/12 to 11/11 detected. On a synthetic board, the
+upscaled corners agree with plain detection to 0.1-0.25 px on average.
+
+---
+
 ## v3.2.0 - 2026-11-22 - knee planes from one board seen by both cameras (`stereo_sagittal_calib.py`)
 
 **What was wrong:** after the cameras were re-aimed (about 12:20), the hand-held side board failed twice: "board

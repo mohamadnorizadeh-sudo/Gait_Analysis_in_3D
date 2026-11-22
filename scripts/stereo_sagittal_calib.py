@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""v3.2.0 - sagittal planes from ONE board seen by BOTH cameras at the same time.
+"""v3.2.1 - sagittal planes from ONE board seen by BOTH cameras at the same time.
 
 Why (22 Nov): the walker cameras see the legs front-diagonally. A board held flat on the
 outside of the leg is then too slanted to detect at 360x640, and a board turned toward the
@@ -67,24 +67,43 @@ else:
     print(f'captured {len(frames)} frames -> {d}  (you can move now)', flush=True)
 
 
+CLAHE = cv2.createCLAHE(3.0, (6, 9))
+CLASSIC = cv2.CALIB_CB_ADAPTIVE_THRESH | cv2.CALIB_CB_NORMALIZE_IMAGE
+
+
 def find(gray):
-    """(corners Nx2 in grid order, grid Nx2 in cm) or (None, None); classic detector, SB as fallback."""
-    for size in ((9, 6), (6, 9)):
-        ok, cn = cv2.findChessboardCorners(gray, size, cv2.CALIB_CB_ADAPTIVE_THRESH | cv2.CALIB_CB_NORMALIZE_IMAGE
-                                           | cv2.CALIB_CB_FAST_CHECK)
+    """(corners Nx2 in grid order, grid Nx2 in cm, method) or (None, None, None).
+
+    v3.2.1: the board faces both cameras at ~45-50 deg, so its squares are only ~6-11 px wide and the right
+    camera saw it in shadow against a bright window. Plain detection found it in 1 of 24 views (12:52); a 2x
+    upscale + CLAHE contrast found it in 11/11 right-camera frames. Order: plain -> 2x CLAHE classic ->
+    2x CLAHE sector-based (SB) -> 3x CLAHE SB."""
+    size = cn = None
+    for sz in ((9, 6), (6, 9)):
+        ok, c = cv2.findChessboardCorners(gray, sz, CLASSIC | cv2.CALIB_CB_FAST_CHECK)
         if ok:
-            cn = cv2.cornerSubPix(gray, cn, (3, 3), (-1, -1), CRIT)
+            size, cn, how = sz, cv2.cornerSubPix(gray, c, (3, 3), (-1, -1), CRIT), 'plain'
             break
-    else:
-        for size in ((9, 6), (6, 9)):
-            ok, cn = cv2.findChessboardCornersSB(gray, size, cv2.CALIB_CB_NORMALIZE_IMAGE | cv2.CALIB_CB_ACCURACY)
+    for s, sb in ((2, False), (2, True), (3, True)):
+        if cn is not None:
+            break
+        u = CLAHE.apply(cv2.resize(gray, None, fx=s, fy=s, interpolation=cv2.INTER_CUBIC))
+        for sz in ((9, 6), (6, 9)):
+            if sb:
+                ok, c = cv2.findChessboardCornersSB(u, sz, cv2.CALIB_CB_NORMALIZE_IMAGE | cv2.CALIB_CB_ACCURACY)
+            else:
+                ok, c = cv2.findChessboardCorners(u, sz, CLASSIC)
+                if ok:
+                    c = cv2.cornerSubPix(u, c, (5, 5), (-1, -1), CRIT)
             if ok:
+                # pixel centres: x_orig = (x_up + 0.5) / s - 0.5
+                size, cn, how = sz, (c.astype(float) + 0.5) / s - 0.5, f'{s}x{" SB" if sb else ""}'
                 break
-        else:
-            return None, None
+    if cn is None:
+        return None, None, None
     cols, rows = size
     g = np.array([[x, y] for y in range(rows) for x in range(cols)], float) * a.square_mm / 10.0
-    return cn.reshape(-1, 2).astype(float), g
+    return cn.reshape(-1, 2).astype(float), g, how
 
 
 def pose(cam, cn, g):
@@ -118,12 +137,12 @@ both = []
 for k, f in enumerate(frames):
     r, msg = {}, []
     for ci, cam in enumerate(('cam0', 'cam1')):
-        cn, g = find(cv2.cvtColor(f[:, ci * W:(ci + 1) * W], cv2.COLOR_BGR2GRAY))
+        cn, g, how = find(cv2.cvtColor(f[:, ci * W:(ci + 1) * W], cv2.COLOR_BGR2GRAY))
         if cn is None:
             msg.append(f'{cam} --')
             continue
         r[cam] = pose(cam, cn, g)
-        msg.append(f'{cam} ok (slant {r[cam][4]:.0f}, {r[cam][3]:.0f} cm, rms {r[cam][2]:.1f} px)')
+        msg.append(f'{cam} ok {how} (slant {r[cam][4]:.0f}, {r[cam][3]:.0f} cm, rms {r[cam][2]:.2f} px)')
     print(f'f{k:02d}  ' + '   '.join(msg), flush=True)
     if len(r) == 2:
         both.append(r)
