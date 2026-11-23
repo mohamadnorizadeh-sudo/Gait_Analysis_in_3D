@@ -5,6 +5,32 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.3.8 - 2026-11-23 (evening) - one reference for all walks (YOLOv8x); final model trained on the Pi
+
+**Issue:** v3.3.7 compared walks against MoveNet because YOLOv8x had only run on walk 1, and the two references
+disagree by ~15 deg at the near leg's swing peak (walk 2: left 33 vs 48 deg, right 40 vs 55 deg). They agree when
+standing (both about 5-6 deg) and disagree more at large bends (deepest knee bend 98 vs 117 deg). The laptop
+watcher script also stopped at once ("no matches found: *.mov", zsh), so it now lists videos with `find`.
+
+**Changed:** YOLOv8x references for walks 2 and 3 (`validation/walk_20261123/walk{2,3}_ref_ipad_yolov8x.csv`).
+Model `config/angle_model.pkl` trained on the Pi from all three walks with the YOLOv8x reference (near-leg labels);
+the session script loads it by default. The MoveNet-trained model is kept as `config/angle_model_interim_movenet.pkl`.
+
+**Leave one walk out, YOLOv8x reference (gbm):**
+
+| held-out walk | L: median err / bias / 95 % LoA | R: median err / bias / 95 % LoA |
+|---|---|---|
+| walk 1 | 4.0 / -5.0 / -18.7..+8.6 | 6.3 / -8.7 / -39.2..+21.8 |
+| walk 2 | 5.8 / -5.4 / -18.5..+7.8 | 4.7 / -2.4 / -16.0..+11.3 |
+| walk 3 | 3.7 / -1.9 / -12.8..+9.0 | 4.7 / -1.8 / -14.5..+11.0 |
+
+Frame RMSE 4.3-9.9 deg (MoveNet reference: 6.4-10.6). Median error and bias are within the gates on walk 3 and
+close on the others; the limits of agreement (about +-13..20 deg) are not. Walk 1's right leg includes the one pass
+with 71 deg swing peaks. Which reference is closer to the true angle still needs a static check with measured
+angles (no walker needed; see the 23 Nov evening note in the project doc).
+
+---
+
 ## v3.3.7 - 2026-11-23 (afternoon) - three walks with the new cameras; copy Pi data without scp; clock from walking
 
 **Recorded (Pi, new camera position):** walk 1 `side_session_20261123_082913` (iPad IMG_0019, phone IMG_5021 at a
