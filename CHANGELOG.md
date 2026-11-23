@@ -5,6 +5,46 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.3.7 - 2026-11-23 (afternoon) - three walks with the new cameras; copy Pi data without scp; clock from walking
+
+**Recorded (Pi, new camera position):** walk 1 `side_session_20261123_082913` (iPad IMG_0019, phone IMG_5021 at a
+corner), walk 2 `..._102034` (IMG_0021, phone IMG_5041 opposite side), walk 3 `..._103259` (IMG_0022, phone
+IMG_5043). Mixed normal / faster / shuffle / stiff-left / stiff-right passes, 10-11 passes each; cameras saw the legs
+in 87-99 % of walking frames.
+
+**Issues and changes:**
+- Copying Pi recordings needed `scp` from the user. New `scripts/pi_slim_pack.py` (Pi) packs the six leg points
+  per camera into about 200 kB of text; it is read from the Pi Connect shell screen (terminal enlarged to 353x187)
+  and `scripts/pi_slim_decode.py` rebuilds `keypoints.jsonl`. Model features are identical (max difference 0.0 on
+  walk 1); md5 checked for walks 2 and 3.
+- Walks 2 and 3: knee bends at 27-36 s (outside the 3-30 s sync window) and the first ~40 s of the iPad video
+  unusable, so the knee-bend clock match failed (r 0.34 / 0.69). `align()` now falls back to matching the walking
+  itself (every Pi camera/leg angle against the same reference leg over all passes): offsets +1.05 s and -6.70 s,
+  per-pass offsets within 0.1 s, matching the video file timestamps. The iPad may start after the Pi:
+  `offline_pipeline.py --off-min` default is now -30 s.
+- MoveNet reference cleaning: frames with leg confidence < 0.3 or angle > 110 deg are interpolated
+  (`walk*_ref_ipad_movenet_clean.csv`; 30-39 % of frames, mostly when the user is far from the iPad).
+
+**Results, leave one WALK out (each walk predicted by a model trained only on the other two; near-leg labels;
+MoveNet reference for all three; ridge):**
+
+| held-out walk | L: median err / bias / 95 % LoA | R: median err / bias / 95 % LoA |
+|---|---|---|
+| walk 1 | 3.2 / -3.5 / -20.6..+13.5 | 5.5 / -3.9 / -24.4..+16.7 |
+| walk 2 | 9.6 / -8.7 / -19.8..+2.3 | 3.2 / -4.6 / -17.9..+8.7 |
+| walk 3 | 4.3 / -3.7 / -14.9..+7.5 | 5.9 / -7.2 / -25.7..+11.2 |
+
+Frame-by-frame r 0.77-0.90. Gates (median <= 5, |bias| <= 3, LoA within +-10) are not met yet.
+
+**Reference uncertainty (main open issue):** on walk 1, YOLOv8x and MoveNet on the same iPad video disagree on the
+near leg's swing peak by up to 15 deg (left leg median 35 vs 50 deg). Mixing the two references across walks made
+results worse (bias +8 on one walk, -13 on another), so a model must be trained and tested against one reference.
+Which reference is right cannot be decided from video alone: a static check with known knee angles (e.g. a
+goniometer or a protractor on a board, held at 0/30/60/90 deg in front of the iPad) is needed. YOLOv8x for walks 2
+and 3 and the phone references could not be run (laptop closed).
+
+---
+
 ## v3.3.6 - 2026-11-23 - learn only from the leg nearer the reference camera; first walk with the new cameras
 
 **Issue:** in a side video the far leg is partly hidden behind the near one, so its reference angle is unreliable.

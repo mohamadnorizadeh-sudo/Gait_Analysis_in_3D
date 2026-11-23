@@ -69,6 +69,22 @@ def align(tau, P, ref, sync, off_min, off_max, speed):
                 best = (r_, o)
     off = best[1]
     passes = passes_from_ref(t, ref['hip_x'], speed)
+    if best[0] < 0.9 and passes:
+        # v3.3.7: knee bends missed (23 Nov walks 2-3: bends at 27-36 s, start of the iPad video unusable) ->
+        # match the walking itself: every Pi camera/leg angle against the same reference leg over all passes.
+        w = (-2, off)
+        for (c, j), q0 in raw.items():
+            Fj = medfilt(ref['flex_L' if j == 0 else 'flex_R'], 5)
+            for o in np.arange(off_min, off_max, 0.05):
+                tt = tau + o
+                m = ~np.isnan(q0) & (q0 < 75) & (tt > passes[0][0]) & (tt < passes[-1][1])
+                if m.sum() < 100:
+                    continue
+                r_ = np.corrcoef(np.interp(tt[m], t, Fj), q0[m])[0, 1]
+                if r_ > w[0]:
+                    w = (r_, o)
+        print('  clock: knee-bend sync r %.2f too low; walking match r %.2f at offset %.2f s' % (best[0], *w))
+        off = w[1]
     mids, offs = [], []
     for p0, p1, _ in passes:
         m = (tau + off >= p0) & (tau + off <= p1)

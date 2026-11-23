@@ -63,7 +63,7 @@ def main():
     ap.add_argument('--styles', default=DEFAULT_STYLES, help='walking style per pass of the test walk, in order')
     ap.add_argument('--model', default='yolov8x-pose.pt')
     ap.add_argument('--sync', default='3,30', help='Pi seconds window that contains the knee bends')
-    ap.add_argument('--off-min', default='0')
+    ap.add_argument('--off-min', default='-30', help='negative: the iPad started after the Pi (v3.3.7)')
     ap.add_argument('--off-max', default='60', help='the iPad may start up to this many seconds before the Pi')
     a = ap.parse_args()
     root = os.path.abspath(a.root)
