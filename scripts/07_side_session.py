@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""v3.0 live session with the two SIDE cameras (cam0 = left leg, cam1 = right leg).
+"""v3.0 live session with the two SIDE cameras (cam0 = left leg, cam1 = right leg); learned angle v3.3.1.
 
 Pi screen: cam0 | cam1 with hip-knee-ankle drawn + live knee-angle graphs.
 Web: same dashboard as before (http://<pi>:8080).  Records raw video, all keypoints and angles.
@@ -34,6 +34,8 @@ ap.add_argument('--seconds', type=float, default=3600)
 ap.add_argument('--web-port', type=int, default=8080)
 ap.add_argument('--headless', action='store_true')
 ap.add_argument('--no-video', action='store_true')
+ap.add_argument('--model', default='config/angle_model.pkl',
+                help='v3.3.1 learned angle model from train_angle_model.py; shown when present, "" = off')
 a = ap.parse_args()
 
 from gait3d.hailo_pose import HailoPoseEstimator
@@ -46,15 +48,23 @@ tracker = SideTracker(planes, SideConfig(source=src_map, markers=a.markers, mark
                                              shank_seed=a.shank_seed,
                                              marker_radius_px=a.marker_radius, marker_v_min=a.marker_vmin,
                                              marker_color=a.marker_color))
+model = None
+if a.model and os.path.exists(a.model):
+    from gait3d.angle_model import AngleModel
+    try:
+        model = AngleModel(a.model)
+    except Exception as e:                                  # wrong feature version, missing file parts, ...
+        print('[side] angle model NOT used:', e, flush=True)
 os.makedirs(a.out, exist_ok=True)
 with open(os.path.join(a.out, 'config.json'), 'w') as f:
-    json.dump({'source': src_map, 'markers': a.markers, 'planes': sorted(planes.planes), 'started': time.ctime()}, f)
+    json.dump({'source': src_map, 'markers': a.markers, 'planes': sorted(planes.planes), 'started': time.ctime(),
+               'model': (a.model + ' (' + model.kind + ')') if model else None}, f)
 live = LiveData()
 live.csv_path = os.path.join(a.out, 'angles.csv')
 web = WebDashboard(live, a.web_port).start() if a.web_port else None
 fcsv = open(live.csv_path, 'w', newline='')
 w = csv.writer(fcsv)
-w.writerow(['t', 'L_flexion', 'R_flexion', 'L_raw', 'R_raw', 'L_status', 'R_status'])
+w.writerow(['t', 'L_flexion', 'R_flexion', 'L_raw', 'R_raw', 'L_status', 'R_status', 'L_model', 'R_model'])
 fkp = open(os.path.join(a.out, 'keypoints.jsonl'), 'w')
 vid = None
 STOP = []
@@ -64,7 +74,8 @@ pj = lambda ps: [{'xy': [[round(float(x), 1), round(float(y), 1)] for x, y in p.
                   'c': [round(float(c), 3) for c in p.conf], 's': round(float(p.score), 3)} for p in ps]
 COL = {'L': (255, 170, 0), 'R': (0, 140, 255)}
 t_end, n, t_fps, fps = time.time() + a.seconds, 0, time.time(), 0.0
-print('[side] planes:', sorted(planes.planes) or 'NONE (uncalibrated pixels)', '| markers' if a.markers else '', flush=True)
+print('[side] planes:', sorted(planes.planes) or 'NONE (uncalibrated pixels)', '| markers' if a.markers else '',
+      '| model: %s (%s)' % (a.model, model.kind) if model else '| model: none (plane method)', flush=True)
 try:
     with ShmStereoSource() as src:
         while time.time() < t_end and not STOP:
@@ -79,8 +90,11 @@ try:
             people = {c: hp([im])[0] for c, im in imgs.items()}
             fkp.write(json.dumps({'t': round(t, 4), 'cam0': pj(people['cam0']), 'cam1': pj(people['cam1'])}) + '\n')
             out = tracker.process(t, people, imgs)
+            ml = dict(zip('LR', model.push(people))) if model else {'L': None, 'R': None}
             w.writerow([f'{t:.4f}'] + [('' if out[s].flexion is None else f'{out[s].flexion:.1f}') for s in 'LR']
-                       + [('' if out[s].raw is None else f'{out[s].raw:.1f}') for s in 'LR'] + [out[s].status for s in 'LR'])
+                       + [('' if out[s].raw is None else f'{out[s].raw:.1f}') for s in 'LR'] + [out[s].status for s in 'LR']
+                       + [('' if ml[s] is None else f'{ml[s]:.1f}') for s in 'LR'])
+            shown = ml if model else {s: out[s].flexion for s in 'LR'}
             vis = raw.copy()
             for s in 'LR':
                 o, cam = out[s], src_map[s]
@@ -92,14 +106,15 @@ try:
                 cv2.line(vis, p[1], p[2], COL[s], 3)
                 for q in p:
                     cv2.circle(vis, q, 6, COL[s], -1)
-                txt = '--' if o.flexion is None else f'{o.flexion:.0f}'
-                cv2.putText(vis, f'{s} {txt}', (dx + 8, 34), cv2.FONT_HERSHEY_SIMPLEX, 1.0, COL[s], 2)
+                txt = '--' if shown[s] is None else f'{shown[s]:.0f}'
+                cv2.putText(vis, f'{s} {txt}' + (' ML' if model else ''), (dx + 8, 34), cv2.FONT_HERSHEY_SIMPLEX, 1.0,
+                            COL[s], 2)
             n += 1
             if time.time() - t_fps > 2:
                 fps, n, t_fps = n / (time.time() - t_fps), 0, time.time()
             status = ('stand still to set 0' if tracker.offset is None else 'tracking') + \
                      f" | L {out['L'].status} | R {out['R'].status}"
-            live.push(t, {s: out[s].flexion for s in 'LR' if out[s].flexion is not None}, status, fps, vis)
+            live.push(t, {s: shown[s] for s in 'LR' if shown[s] is not None}, status, fps, vis)
             if not a.headless and os.environ.get('DISPLAY'):
                 cv2.imshow('Gait - side cameras', render_screen(vis, live))
                 if cv2.waitKey(1) & 0xFF in (27, ord('q')):

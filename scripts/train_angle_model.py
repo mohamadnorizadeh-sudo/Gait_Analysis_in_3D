@@ -1,26 +1,27 @@
 #!/usr/bin/env python3
-"""Learned knee angle from both cameras' leg keypoints (v3.3.0).
+"""Learned knee angle from both cameras' leg keypoints: train, validate, test (v3.3.0; test mode v3.3.1).
 
 Why (22 Nov): the walker cameras see the legs 46-52 deg off a true side view, so the flat 2D angle loses about
 half the swing bend. Two pose models (YOLOv8 on the Pi, MoveNet on the laptop) agree on that small image angle, so
 the geometry is the limit, not the model. The positions of all six leg points in BOTH views still change with the
-bend. On the 13:01 walk, a model trained on 7 passes predicted the 8th within 4.3-8.0 deg RMSE, reaching 94 % of
-the reference swing peak (laptop test with MoveNet keypoints).
+bend. On the 13:01 walk, a model trained on 7 passes predicted the 8th within 4.3-8.0 deg RMSE (laptop test).
 
-Inputs per session: the Pi recording folder (keypoints.jsonl from 07_side_session.py: every person, 17 keypoints,
-both cameras) and the far-view reference CSV from ref_movenet_track.py. The clocks are aligned automatically:
-offset from the sync knee bends, then a per-pass drift fit.
+Inputs per session: the Pi recording folder (keypoints.jsonl from 07_side_session.py) and the far-view reference
+CSV from ref_movenet_track.py. Clocks are aligned automatically (knee-bend offset + per-pass drift).
+Features: gait3d/angle_model.py (shared with the live session, so training and live use the same code).
 
-Features per frame: for each camera, hips/knees/ankles of both legs relative to the hip midpoint / leg length,
-their confidences, and both raw 2D knee angles; plus the same from the previous and next frame.
-Models: gradient boosting (scikit-learn) per leg, and a ridge model saved as plain numbers (runs anywhere).
-Validation: leave one session out (2+ sessions) or leave one pass out (1 session).
+  # train (+ cross-validation), save the model
+  python3 scripts/train_angle_model.py --session runs/A refA.csv --session runs/B refB.csv --out config/angle_model.pkl
+  # held-out test walk, never used for training; --styles labels the passes in walking order
+  python3 scripts/train_angle_model.py --session runs/A refA.csv --session runs/B refB.csv \
+      --test runs/T refT.csv --styles normal,normal,shuffle,shuffle,stiffL,stiffL,stiffR,stiffR
+  # test a frozen model without retraining
+  python3 scripts/train_angle_model.py --load config/angle_model.pkl --test runs/T refT.csv --styles ...
 
-  python3 scripts/train_angle_model.py --session runs/side_session_A refA.csv --session runs/side_session_B refB.csv \
-      --out config/angle_model.pkl
+Pass gates (fixed before testing): median |swing-peak error| <= 5 deg, |bias| <= 3 deg, 95 % limits of
+agreement within +-10 deg, per leg on the test walk.
 """
 import argparse
-import json
 import os
 import pickle
 import sys
@@ -28,55 +29,20 @@ import sys
 import numpy as np
 from scipy.signal import find_peaks, medfilt
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from gait3d.angle_model import FEATURE_VERSION, LEGS, AngleModel, features, flex, frame_points, valid  # noqa: E402
 from walk_compare_channels import passes_from_ref  # noqa: E402
-
-LEGS = ((11, 13, 15), (12, 14, 16))
-FEATURE_VERSION = 1
-
-
-def best_person(people):
-    best, bs = None, -1.0
-    for p in people or []:
-        xy, c = np.asarray(p['xy'], float), np.asarray(p['c'], float)
-        L = sum(np.linalg.norm(xy[i] - xy[k]) + np.linalg.norm(xy[a] - xy[k]) for i, k, a in LEGS)
-        q = L * float(np.mean(c[11:17]))
-        if q > bs:
-            best, bs = (xy, c), q
-    return best
 
 
 def load_session(rec):
+    import json
     t, P = [], []
     for line in open(os.path.join(rec, 'keypoints.jsonl')):
         r = json.loads(line)
         t.append(r['t'])
-        fr = np.full((2, 17, 3), np.nan)
-        for ci, cam in enumerate(('cam0', 'cam1')):
-            b = best_person(r.get(cam))
-            if b is not None:
-                fr[ci, :, :2], fr[ci, :, 2] = b[0], b[1]
-        P.append(fr)
+        P.append(frame_points(r))
     return np.array(t), np.array(P)          # (N,), (N, 2 cams, 17, 3)
-
-
-def flex(xy, idx):
-    u, v = xy[:, idx[0]] - xy[:, idx[1]], xy[:, idx[2]] - xy[:, idx[1]]
-    c = np.sum(u * v, 1) / (np.linalg.norm(u, axis=1) * np.linalg.norm(v, axis=1) + 1e-9)
-    return 180 - np.degrees(np.arccos(np.clip(c, -1, 1)))
-
-
-def features(P):
-    out = []
-    for ci in range(2):
-        xy, c = P[:, ci, :, :2], P[:, ci, :, 2]
-        mid = (xy[:, 11] + xy[:, 12]) / 2
-        leg = np.linalg.norm(xy[:, 11] - xy[:, 13], axis=1) + np.linalg.norm(xy[:, 13] - xy[:, 15], axis=1) + 1e-6
-        out += [((xy[:, 11:17] - mid[:, None]) / leg[:, None, None]).reshape(len(P), -1), c[:, 11:17]]
-        out += [flex(xy, idx)[:, None] for idx in LEGS]
-    X = np.hstack(out)
-    X = np.hstack([X, np.roll(X, 1, 0), np.roll(X, -1, 0)])
-    return np.nan_to_num(X, nan=0.0)
 
 
 def align(tau, P, ref, sync, off_min, off_max, speed):
@@ -115,83 +81,158 @@ def align(tau, P, ref, sync, off_min, off_max, speed):
             mids.append(np.mean(tau[m]))
             offs.append(bb[1])
     drift, b = np.polyfit(mids, offs, 1) if len(mids) >= 3 else (0.0, off)
-    tr = tau + b + drift * tau
-    print('  clock: sync r %.2f, t_ref = t_pi + %.2f + %.5f t_pi, %d passes' % (best[0], b, drift, len(passes)))
-    return tr, F, t, passes
+    print('  clock: sync r %.2f (needs > 0.9), t_ref = t_pi + %.2f + %.5f t_pi, %d passes' % (best[0], b, drift,
+                                                                                            len(passes)))
+    return t_pi_to_ref(tau, b, drift), F, t, passes
 
 
-def report(name, pred, Y, inp, t, F, tr, passes):
-    for j, s in ((0, 'L'), (1, 'R')):
-        e = pred[inp, j] - Y[inp, j]
-        pk = []
-        for p0, p1, _ in passes:
-            ii = np.where((t >= p0) & (t <= p1))[0]
-            for p in find_peaks(F[ii, j], prominence=12, distance=24)[0]:
-                k = ii[p]
-                w = (tr >= t[k] - 0.2) & (tr <= t[k] + 0.2)
-                if w.any():
-                    pk.append((F[k, j], pred[w, j].max()))
-        pk = np.array(pk) if pk else np.zeros((0, 2))
-        print('  %-6s %s  r %.2f  RMSE %.1f  bias %+.1f  swing peak %.1f vs ref %.1f, |peak err| median %.1f deg (n %d)' % (
-            name, s, np.corrcoef(pred[inp, j], Y[inp, j])[0, 1], np.sqrt(np.mean(e ** 2)), e.mean(),
-            np.median(pk[:, 1]) if len(pk) else np.nan, np.median(pk[:, 0]) if len(pk) else np.nan,
-            np.median(np.abs(pk[:, 1] - pk[:, 0])) if len(pk) else np.nan, len(pk)))
+def t_pi_to_ref(tau, b, drift):
+    return tau + b + drift * tau
+
+
+def prepare(rec, refp, a):
+    print(rec)
+    tp, P = load_session(rec)
+    tau = tp - tp[0]
+    ref = np.genfromtxt(refp, delimiter=',', names=True, comments='#')
+    tr, F, t, passes = align(tau, P, ref, tuple(map(float, a.sync.split(','))), a.off_min, a.off_max, a.speed)
+    Y = np.column_stack([np.interp(tr, t, F[:, j]) for j in range(2)])
+    grp = -np.ones(len(tau), int)
+    for i, (p0, p1, _) in enumerate(passes):
+        grp[(tr >= p0) & (tr <= p1)] = i
+    raw = np.column_stack([flex(P[:, 0, :, :2], LEGS[0]), flex(P[:, 1, :, :2], LEGS[1])])
+    return dict(P=P, X=features(P), V=valid(P), Y=Y, grp=grp, tr=tr, F=F, t=t, passes=passes, raw=raw)
+
+
+def strides(pred, s, j):
+    """Per reference swing peak: (pass index, reference peak, prediction max within +-0.2 s)."""
+    out = []
+    for i, (p0, p1, _) in enumerate(s['passes']):
+        ii = np.where((s['t'] >= p0) & (s['t'] <= p1))[0]
+        for p in find_peaks(s['F'][ii, j], prominence=12, distance=24)[0]:
+            k = ii[p]
+            w = (s['tr'] >= s['t'][k] - 0.2) & (s['tr'] <= s['t'][k] + 0.2)
+            q = pred[w, j]
+            q = q[~np.isnan(q)]
+            if len(q):
+                out.append((i, s['F'][k, j], q.max()))
+    return np.array(out) if out else np.zeros((0, 3))
+
+
+def agreement(name, pred, s, gates=None):
+    inp = s['grp'] >= 0
+    lines, ok_all = [], True
+    for j, leg in ((0, 'L'), (1, 'R')):
+        m = inp & ~np.isnan(pred[:, j])
+        e = pred[m, j] - s['Y'][m, j]
+        st = strides(pred, s, j)
+        d = st[:, 2] - st[:, 1] if len(st) else np.array([np.nan])
+        bias, sd = np.mean(d), np.std(d, ddof=1) if len(d) > 1 else np.nan
+        med = np.median(np.abs(d))
+        line = ('  %-8s %s  frames r %.2f RMSE %4.1f | swing peaks n %3d: ref %4.1f, model %4.1f, |err| median %4.1f, '
+                'bias %+4.1f, 95%% LoA %+5.1f..%+5.1f' % (name, leg, np.corrcoef(pred[m, j], s['Y'][m, j])[0, 1],
+                                                       np.sqrt(np.mean(e ** 2)), len(st), np.median(st[:, 1]),
+                                                       np.median(st[:, 2]), med, bias, bias - 1.96 * sd,
+                                                       bias + 1.96 * sd))
+        if gates:
+            g = med <= gates[0] and abs(bias) <= gates[1] and abs(bias) + 1.96 * sd <= gates[2]
+            ok_all &= bool(g)
+            line += '  -> %s' % ('PASS' if g else 'FAIL')
+        lines.append(line)
+    print('\n'.join(lines))
+    return ok_all
+
+
+def by_style(pred, s, styles):
+    """Median swing peak per walking style: reference vs model vs the raw own-camera 2D angle."""
+    print('  per walking style (median swing peak, deg):   ref   model   raw 2D')
+    for st_name in dict.fromkeys(styles):
+        for j, leg in ((0, 'L'), (1, 'R')):
+            rows = [r for r in strides(pred, s, j) if r[0] < len(styles) and styles[int(r[0])] == st_name]
+            raw = [r for r in strides(s['raw'], s, j) if r[0] < len(styles) and styles[int(r[0])] == st_name]
+            if rows:
+                rows = np.array(rows)
+                print('    %-8s %s  n %2d                       %5.1f  %5.1f   %5.1f' % (
+                    st_name, leg, len(rows), np.median(rows[:, 1]), np.median(rows[:, 2]),
+                    np.median(np.array(raw)[:, 2]) if raw else np.nan))
+    if len(styles) != len(s['passes']):
+        print('  note: %d styles given for %d passes found' % (len(styles), len(s['passes'])))
+
+
+def fit(Xa, Ya, kind):
+    from sklearn.ensemble import HistGradientBoostingRegressor
+    from sklearn.linear_model import Ridge
+    # 800 x 0.1: on the 13:01 walk slightly better swing peaks than 300 x 0.05 (R peak bias -5.1 vs -5.2, median
+    # |peak err| 7.4 vs 8.0); weighting high angles did not help (v3.3.1 comparison)
+    mk = {'gbm': lambda: HistGradientBoostingRegressor(max_iter=800, learning_rate=0.1), 'ridge': lambda: Ridge(1.0)}
+    return [mk[kind]().fit(Xa, Ya[:, j]) for j in range(2)]
+
+
+def predict(models, X, V):
+    Y = np.column_stack([m.predict(X) for m in models])
+    Y[~V] = np.nan
+    return Y
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--session', nargs=2, action='append', metavar=('REC_DIR', 'REF_CSV'), required=True)
+    ap.add_argument('--session', nargs=2, action='append', metavar=('REC_DIR', 'REF_CSV'), default=[])
+    ap.add_argument('--test', nargs=2, metavar=('REC_DIR', 'REF_CSV'))
+    ap.add_argument('--load', help='a saved model to test (no training)')
+    ap.add_argument('--styles', default='', help='comma list, one per pass of the test walk, in walking order')
+    ap.add_argument('--gates', default='5,3,10', help='max median |peak err|, max |bias|, max 95%% LoA (deg)')
     ap.add_argument('--sync', default='3,30')
     ap.add_argument('--off-min', type=float, default=0.0)
     ap.add_argument('--off-max', type=float, default=40.0)
     ap.add_argument('--speed', type=float, default=12.0)
     ap.add_argument('--out', default='config/angle_model.pkl')
     a = ap.parse_args()
-    from sklearn.ensemble import HistGradientBoostingRegressor
-    from sklearn.linear_model import Ridge
+    gates = tuple(map(float, a.gates.split(',')))
 
-    S = []
-    for rec, refp in a.session:
-        print(rec)
-        tp, P = load_session(rec)
-        tau = tp - tp[0]
-        ref = np.genfromtxt(refp, delimiter=',', names=True, comments='#')
-        tr, F, t, passes = align(tau, P, ref, tuple(map(float, a.sync.split(','))), a.off_min, a.off_max, a.speed)
-        X = features(P)
-        Y = np.column_stack([np.interp(tr, t, F[:, j]) for j in range(2)])
-        grp = -np.ones(len(tau), int)
-        for i, (p0, p1, _) in enumerate(passes):
-            grp[(tr >= p0) & (tr <= p1)] = i
-        S.append(dict(X=X, Y=Y, grp=grp, tr=tr, F=F, t=t, passes=passes))
-
-    mk = {'gbm': lambda: HistGradientBoostingRegressor(max_iter=300, learning_rate=0.05), 'ridge': lambda: Ridge(1.0)}
-    for name in mk:
-        print('validation (%s):' % ('leave one session out' if len(S) > 1 else 'leave one pass out'))
-        for si, s in enumerate(S):
-            pred = np.full_like(s['Y'], np.nan)
-            folds = [si] if len(S) > 1 else sorted(set(s['grp'][s['grp'] >= 0]))
-            for f in folds:
-                if len(S) > 1:
-                    Xtr = np.vstack([q['X'][q['grp'] >= 0] for k, q in enumerate(S) if k != si])
-                    Ytr = np.vstack([q['Y'][q['grp'] >= 0] for k, q in enumerate(S) if k != si])
-                    te = np.ones(len(s['X']), bool)
-                else:
-                    tr_ = (s['grp'] >= 0) & (s['grp'] != f)
-                    Xtr, Ytr, te = s['X'][tr_], s['Y'][tr_], s['grp'] == f
-                for j in range(2):
-                    pred[te, j] = mk[name]().fit(Xtr, Ytr[:, j]).predict(s['X'][te])
-            report(name, pred, s['Y'], s['grp'] >= 0, s['t'], s['F'], s['tr'], s['passes'])
-
-    Xa = np.vstack([q['X'][q['grp'] >= 0] for q in S])
-    Ya = np.vstack([q['Y'][q['grp'] >= 0] for q in S])
-    models = {name: [mk[name]().fit(Xa, Ya[:, j]) for j in range(2)] for name in mk}
-    ridge = {'coef': [m.coef_.tolist() for m in models['ridge']], 'intercept': [float(m.intercept_) for m in models['ridge']]}
-    with open(a.out, 'wb') as fh:
-        pickle.dump({'feature_version': FEATURE_VERSION, 'gbm': models['gbm'], 'ridge': ridge,
-                     'sessions': [s_[0] for s_ in a.session]}, fh)
-    with open(a.out.replace('.pkl', '_ridge.json'), 'w') as fh:
-        json.dump({'feature_version': FEATURE_VERSION, **ridge}, fh)
-    print('saved', a.out, 'and', a.out.replace('.pkl', '_ridge.json'), '(trained on %d frames)' % len(Xa))
+    S = [prepare(rec, refp, a) for rec, refp in a.session]
+    if S and not a.load:
+        for kind in ('gbm', 'ridge'):
+            print('cross-validation, %s (%s):' % (kind, 'leave one session out' if len(S) > 1 else 'leave one pass out'))
+            for si, s in enumerate(S):
+                pred = np.full_like(s['Y'], np.nan)
+                folds = [None] if len(S) > 1 else sorted(set(s['grp'][s['grp'] >= 0]))
+                for f in folds:
+                    if f is None:
+                        Xtr = np.vstack([q['X'][q['grp'] >= 0] for k, q in enumerate(S) if k != si])
+                        Ytr = np.vstack([q['Y'][q['grp'] >= 0] for k, q in enumerate(S) if k != si])
+                        te = np.ones(len(s['X']), bool)
+                    else:
+                        tr_ = (s['grp'] >= 0) & (s['grp'] != f)
+                        Xtr, Ytr, te = s['X'][tr_], s['Y'][tr_], s['grp'] == f
+                    ms = fit(Xtr, Ytr, kind)
+                    pred[te] = predict(ms, s['X'][te], s['V'][te])
+                agreement(kind, pred, s)
+        Xa = np.vstack([q['X'][q['grp'] >= 0] for q in S])
+        Ya = np.vstack([q['Y'][q['grp'] >= 0] for q in S])
+        gbm, ridge = fit(Xa, Ya, 'gbm'), fit(Xa, Ya, 'ridge')
+        rj = {'coef': [m.coef_.tolist() for m in ridge], 'intercept': [float(m.intercept_) for m in ridge]}
+        with open(a.out, 'wb') as fh:
+            pickle.dump({'feature_version': FEATURE_VERSION, 'gbm': gbm, 'ridge': rj,
+                         'sessions': [x[0] for x in a.session]}, fh)
+        import json
+        with open(a.out.replace('.pkl', '_ridge.json'), 'w') as fh:
+            json.dump({'feature_version': FEATURE_VERSION, **rj}, fh)
+        print('saved %s and %s (trained on %d frames from %d sessions)' % (a.out, a.out.replace('.pkl', '_ridge.json'),
+                                                                         len(Xa), len(S)))
+    if a.test:
+        model = AngleModel(a.load or a.out)
+        T = prepare(a.test[0], a.test[1], a)
+        pred = model.predict_sequence(T['P'])
+        print('HELD-OUT TEST (%s model, gates: median |peak err| <= %g, |bias| <= %g, 95%% LoA within +-%g deg):' % (
+            model.kind, *gates))
+        ok = agreement('model', pred, T, gates)
+        agreement('raw 2D', T['raw'], T)
+        if a.styles:
+            by_style(pred, T, a.styles.split(','))
+        np.savetxt(os.path.join(a.test[0], 'model_test_pred.csv'),
+                   np.column_stack([T['tr'], T['Y'], pred]), delimiter=',', fmt='%.3f',
+                   header='t_ref,ref_L,ref_R,model_L,model_R', comments='')
+        print('RESULT:', 'PASS on both legs' if ok else 'FAIL (see above)')
 
 
 if __name__ == '__main__':

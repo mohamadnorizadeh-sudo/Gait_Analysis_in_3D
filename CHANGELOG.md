@@ -5,6 +5,40 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.3.1 - 2026-11-23 (morning) - learned angle in the live session; held-out test mode; stricter evaluation
+
+**What changed**
+- `gait3d/angle_model.py`: one feature definition shared by training and the live session, so the live model sees
+  exactly what it was trained on. Features are now **causal** (frames k, k-1, k-2; FEATURE_VERSION 2), so there is
+  no live delay. A frame gets no model value unless both cameras see that leg's hip, knee and ankle (conf >= 0.3).
+  `AngleModel.push()` (live, frame by frame) and `predict_sequence()` (offline) give identical values
+  (max difference 0.0 on 400 frames); 4.5 ms per frame for gradient boosting, 0.2 ms for ridge (laptop).
+- `scripts/07_side_session.py`: when `config/angle_model.pkl` exists, the Pi screen and web page show the model's
+  angle ("ML") instead of the plane method. `angles.csv` gets `L_model`, `R_model` columns; the plane values stay
+  in `L_flexion`/`R_flexion`. `--model ""` switches it off.
+- `scripts/train_angle_model.py`: `--test REC REF` evaluates a walk never used for training, `--load` tests a
+  frozen model, `--styles` labels the test passes (normal, shuffle, stiffL, ...) and prints the median swing peak
+  per walking style (reference vs model vs raw 2D angle). Per leg it reports swing-peak agreement (median |error|,
+  bias, 95 % limits of agreement) against gates fixed in advance (5 / 3 / 10 deg) and prints PASS or FAIL.
+  Gradient boosting 800 x 0.1.
+
+**Stricter evaluation of the 13:01 walk (leave one pass out, only frames where both cameras see the leg, swing
+peaks matched within +-0.2 s).** Frame-level agreement holds (r 0.89 / 0.92, RMSE 6.0 / 5.6 deg). Stride by
+stride it does not yet meet the gates:
+
+| Leg | Reference peak | Model peak | Median peak error | Bias | 95 % limits of agreement |
+|---|---|---|---|---|---|
+| L | 47.3 | 44.1 | 8.4 | -5.5 | -25.6 to +14.5 |
+| R | 50.7 | 47.5 | 7.4 | -5.1 | -22.6 to +12.3 |
+
+The model still under-reads peaks by ~5 deg, and single strides scatter by +-19 deg. Part of the scatter is the
+reference: the same leg reads 33 deg on the iPad's side and 55 deg on the far side. Neither a longer context
+(5 frames), nor future frames, nor weighting high angles changed this by more than ~1 deg. More training walks
+and a better reference (iPad raised, a second phone on the other side) are the next levers. The v3.3.0 summary
+(94 % of the reference peak) was a median over all frames, so it hid this stride-to-stride spread.
+
+---
+
 ## v3.3.0 - 2026-11-22 (evening) - learned knee angle from both cameras: 94 % of the reference swing peak
 
 **Why:** every geometric fix so far (plane calibration, two-camera calibration, 3D triangulation, the lens
