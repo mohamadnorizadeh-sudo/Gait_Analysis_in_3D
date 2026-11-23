@@ -5,6 +5,34 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.3.4 - 2026-11-23 - YOLOv8x result: better as the iPad reference, no gain on the Pi
+
+**What was tested:** YOLOv8x-pose (the largest model) was run on the user's laptop (Apple GPU, about 0.03-0.05 s
+per frame) on both videos of the 22 Nov 13:01 walk: the Pi's two-camera video and the iPad side video. The learned
+angle model was then cross-validated (leave one pass out, 8 passes, same code and gates) in four combinations.
+
+| Pi keypoints | iPad reference | swing peaks L: median err / bias / 95 % LoA | R: median err / bias / 95 % LoA |
+|---|---|---|---|
+| 8m (live Pi) | MoveNet | 6.1 / -4.1 / -20.8..+12.6 | 7.4 / -4.2 / -23.8..+15.4 |
+| 8x | MoveNet | 5.2 / -4.2 / -19.3..+10.9 | 8.2 / -3.7 / -23.5..+16.0 |
+| 8m (live Pi) | **8x** | **3.6 / -1.2 / -15.5..+13.0** | **4.2 / -2.5 / -15.5..+10.4** |
+| 8x | 8x | 4.1 / -2.4 / -16.1..+11.3 | 4.9 / -2.6 / -17.1..+11.9 |
+
+(gbm model; gates: median <= 5, |bias| <= 3, LoA within +-10.)
+
+**What it means:** the bigger model on the Pi cameras changes nothing (its leg points are within about 10 px of
+8m), so the Pi keeps YOLOv8m on the AI HAT. The bigger model on the iPad video gives a cleaner reference (mean leg
+confidence 0.95 vs 0.63 for MoveNet): with it, median error and bias now meet the gates on both legs; the limits of
+agreement (about +-15 deg) still do not. The two references disagree most on the leg far from the iPad (swing peak
+31 deg with 8x vs 45 deg with MoveNet on the left leg), so a single side view is still the main uncertainty; a
+second phone on the other side would give each leg a near-side reference.
+
+**Changed:** new `scripts/ref_from_yolo_jsonl.py` turns `yolo_big_keypoints.py` output into the reference CSV
+format; `validation/walk_20261122b/ref_ipad_yolov8x.csv` added (numbers only). From now on, training references are
+built with YOLOv8x on the iPad video; the live system stays on 8m.
+
+---
+
 ## v3.3.3 - 2026-11-23 - offline check with the largest YOLOv8 pose model (on the laptop)
 
 **Why:** the user asked whether the largest pose model would train the system better. YOLOv8x-pose scores 69.2 vs
