@@ -5,6 +5,31 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.3.6 - 2026-11-23 - learn only from the leg nearer the reference camera; first walk with the new cameras
+
+**Issue:** in a side video the far leg is partly hidden behind the near one, so its reference angle is unreliable.
+On today's first walk (Pi `side_session_20261123_082913`, iPad IMG_0019, YOLOv8x reference, clock offset 14.38 s,
+drift 0.00002, 10 passes) the stiff-knee passes show up only on the near leg (18.0 / 18.6 deg), and the far leg
+reads 26-36 deg whatever it does. Training on both legs mixed this noise into the labels.
+
+**Changed:** `train_angle_model.py --labels near` (new default): per pass, only the leg facing the reference camera
+is used for training and scoring. A person walking towards image-right shows their right side (and left side when
+walking left), whichever side of the walkway the camera is on; the direction comes from the reference hip motion.
+`--labels both` gives the old behaviour.
+
+**First walk, leave one pass out (5 passes per leg):**
+
+| labels | L: median err / bias / 95 % LoA | R: median err / bias / 95 % LoA |
+|---|---|---|
+| both legs (v3.3.5) | 4.4 / -4.6 / -28..+19 (gbm) | 6.4 / -5.4 / -33..+23 (gbm) |
+| near leg (v3.3.6) | **2.6 / -3.9 / -18..+10** (ridge) | 7.9 / -7.2 / -35..+20 (ridge) |
+
+The right leg's large error comes from one pass with much bigger swing peaks (71 deg; the other right-leg passes
+are 19-56 deg): when that pass is held out, the model has never seen such a large bend and under-reads it by
+25 deg. Without that pass, right-leg errors are -9..+7 deg. More walks covering the same range of speeds are needed.
+
+---
+
 ## v3.3.5 - 2026-11-23 - laptop training kit (works without Claude) + Pi desktop buttons for side recordings
 
 **Why:** the user asked that the analysis can be finished on the laptop if the assistant is unavailable during

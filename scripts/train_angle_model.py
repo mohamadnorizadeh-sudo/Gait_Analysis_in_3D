@@ -114,13 +114,31 @@ def prepare(rec, refp, a):
     for i, (p0, p1, _) in enumerate(passes):
         grp[(tr >= p0) & (tr <= p1)] = i
     raw = np.column_stack([flex(P[:, 0, :, :2], LEGS[0]), flex(P[:, 1, :, :2], LEGS[1])])
-    return dict(P=P, X=features(P), V=valid(P), Y=Y, grp=grp, tr=tr, F=F, t=t, passes=passes, raw=raw)
+    near = near_legs(t, F, passes)
+    Yt = Y.copy()
+    if getattr(a, 'labels', 'near') == 'near':
+        for i in range(len(passes)):
+            Yt[grp == i, 1 - near[i]] = np.nan
+    return dict(P=P, X=features(P), V=valid(P), Y=Y, Yt=Yt, grp=grp, tr=tr, F=F, t=t, passes=passes, raw=raw,
+                near=near, labels=getattr(a, 'labels', 'near'))
 
+
+def near_legs(t, F, passes):
+    """v3.3.6: which leg is nearer the reference camera in each pass. The far leg is partly hidden behind the near
+    one, so its reference angle is unreliable (23 Nov walk: a stiff-right pass shows up only on the near-side R
+    trace, 18.6 deg, and a far-side reading jumped to 71 deg). In a normal (not mirrored) video, a person walking
+    towards image-right shows their right side, walking towards image-left their left side, whichever side of the
+    walkway the camera stands on. The direction comes from the reference mid-hip motion."""
+    out = [1 if d > 0 else 0 for _, _, d in passes]
+    print('  near leg per pass (reference camera): %s' % ''.join('LR'[k] for k in out))
+    return out
 
 def strides(pred, s, j):
     """Per reference swing peak: (pass index, reference peak, prediction max within +-0.2 s)."""
     out = []
     for i, (p0, p1, _) in enumerate(s['passes']):
+        if s.get('labels') == 'near' and s['near'][i] != j:
+            continue
         ii = np.where((s['t'] >= p0) & (s['t'] <= p1))[0]
         for p in find_peaks(s['F'][ii, j], prominence=12, distance=24)[0]:
             k = ii[p]
@@ -136,7 +154,7 @@ def agreement(name, pred, s, gates=None):
     inp = s['grp'] >= 0
     lines, ok_all = [], True
     for j, leg in ((0, 'L'), (1, 'R')):
-        m = inp & ~np.isnan(pred[:, j])
+        m = inp & ~np.isnan(pred[:, j]) & ~np.isnan(s['Yt'][:, j])
         e = pred[m, j] - s['Y'][m, j]
         st = strides(pred, s, j)
         d = st[:, 2] - st[:, 1] if len(st) else np.array([np.nan])
@@ -178,7 +196,11 @@ def fit(Xa, Ya, kind):
     # 800 x 0.1: on the 13:01 walk slightly better swing peaks than 300 x 0.05 (R peak bias -5.1 vs -5.2, median
     # |peak err| 7.4 vs 8.0); weighting high angles did not help (v3.3.1 comparison)
     mk = {'gbm': lambda: HistGradientBoostingRegressor(max_iter=800, learning_rate=0.1), 'ridge': lambda: Ridge(1.0)}
-    return [mk[kind]().fit(Xa, Ya[:, j]) for j in range(2)]
+    out = []
+    for j in range(2):
+        ok = ~np.isnan(Ya[:, j])      # v3.3.6: far-leg labels are NaN with --labels near
+        out.append(mk[kind]().fit(Xa[ok], Ya[ok, j]))
+    return out
 
 
 def predict(models, X, V):
@@ -199,6 +221,8 @@ def main():
     ap.add_argument('--off-max', type=float, default=40.0)
     ap.add_argument('--speed', type=float, default=12.0)
     ap.add_argument('--out', default='config/angle_model.pkl')
+    ap.add_argument('--labels', default='near', choices=['near', 'both'],
+                    help='v3.3.6: near = per pass, learn and score only the leg nearer the reference camera')
     a = ap.parse_args()
     gates = tuple(map(float, a.gates.split(',')))
 
@@ -212,16 +236,16 @@ def main():
                 for f in folds:
                     if f is None:
                         Xtr = np.vstack([q['X'][q['grp'] >= 0] for k, q in enumerate(S) if k != si])
-                        Ytr = np.vstack([q['Y'][q['grp'] >= 0] for k, q in enumerate(S) if k != si])
+                        Ytr = np.vstack([q['Yt'][q['grp'] >= 0] for k, q in enumerate(S) if k != si])
                         te = np.ones(len(s['X']), bool)
                     else:
                         tr_ = (s['grp'] >= 0) & (s['grp'] != f)
-                        Xtr, Ytr, te = s['X'][tr_], s['Y'][tr_], s['grp'] == f
+                        Xtr, Ytr, te = s['X'][tr_], s['Yt'][tr_], s['grp'] == f
                     ms = fit(Xtr, Ytr, kind)
                     pred[te] = predict(ms, s['X'][te], s['V'][te])
                 agreement(kind, pred, s)
         Xa = np.vstack([q['X'][q['grp'] >= 0] for q in S])
-        Ya = np.vstack([q['Y'][q['grp'] >= 0] for q in S])
+        Ya = np.vstack([q['Yt'][q['grp'] >= 0] for q in S])
         gbm, ridge = fit(Xa, Ya, 'gbm'), fit(Xa, Ya, 'ridge')
         rj = {'coef': [m.coef_.tolist() for m in ridge], 'intercept': [float(m.intercept_) for m in ridge]}
         with open(a.out, 'wb') as fh:
