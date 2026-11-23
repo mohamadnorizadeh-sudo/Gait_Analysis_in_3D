@@ -5,6 +5,21 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.3.3 - 2026-11-23 - offline check with the largest YOLOv8 pose model (on the laptop)
+
+**Why:** the user asked whether the largest pose model would train the system better. YOLOv8x-pose scores 69.2 vs
+65.0 (YOLOv8m-pose) on the COCO keypoint benchmark for about 3x the computation (263 vs 81 GFLOPs), and it is not
+compiled for the Pi's AI HAT. It cannot replace 8m live today (about 3 fps for both cameras would miss swing
+peaks), and an angle model must be trained on the same pose model that runs live. It can still (a) show offline
+whether a bigger model sees more of the knee bend in our camera views, and (b) give cleaner reference angles from
+the iPad video, where label noise is now the main limit.
+
+**What changed:** new `scripts/yolo_big_keypoints.py`, run on the Mac with Ultralytics: any YOLO pose model on a Pi
+session video (cam0 | cam1) or on the iPad video, written as JSON lines in the keypoints.jsonl shape. Apple GPU is
+used only if it matches the CPU within 2 px on 5 test frames (Ultralytics has warned of an MPS pose bug).
+
+---
+
 ## v3.3.2 - 2026-11-23 (morning) - the learned model works on the Pi's own keypoints; sturdier clock alignment
 
 **Pi's own keypoints (YOLOv8 on the Hailo), 13:01 walk, trained and evaluated on the Pi** (leave one pass out,
