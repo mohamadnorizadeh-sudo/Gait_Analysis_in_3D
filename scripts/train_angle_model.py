@@ -46,43 +46,56 @@ def load_session(rec):
 
 
 def align(tau, P, ref, sync, off_min, off_max, speed):
-    """Pi time -> reference time: offset from the knee bends, then per-pass drift (as walk_compare_channels)."""
+    """Pi time -> reference time: offset from the knee bends, then a per-pass drift fit.
+
+    v3.3.2: every camera/leg pair is tried (the camera on the opposite side sees a leg's bend best), a pass counts
+    only when its best pair correlates at r > 0.6, and the drift line is refitted without passes more than 0.15 s
+    off it. v3.3.1 used only cam0-L / cam1-R and found a drift of 0.00015 on the 13:01 walk where the plane angles
+    gave 0.0017 (0.4 s apart by the last pass, enough to miss +-0.2 s swing peaks)."""
     t = ref['t']
     F = np.column_stack([medfilt(ref['flex_L'], 5), medfilt(ref['flex_R'], 5)])
-    raw = np.column_stack([flex(P[:, 0, :, :2], LEGS[0]), flex(P[:, 1, :, :2], LEGS[1])])
+    raw = {(c, j): flex(P[:, c, :, :2], LEGS[j]) for c in range(2) for j in range(2)}
     s0, s1 = sync
     sel = (tau > s0) & (tau < s1)
     best = (-2, 0.0)
-    for j in range(2):
-        q = raw[sel, j]
+    for (c, j), q0 in raw.items():
+        q = q0[sel]
         ok = ~np.isnan(q)
         if ok.sum() < 20:
             continue
         for o in np.arange(off_min, off_max, 0.02):
-            c = np.corrcoef(np.interp(tau[sel][ok] + o, t, np.maximum(F[:, 0], F[:, 1])), q[ok])[0, 1]
-            if c > best[0]:
-                best = (c, o)
+            r_ = np.corrcoef(np.interp(tau[sel][ok] + o, t, np.maximum(F[:, 0], F[:, 1])), q[ok])[0, 1]
+            if r_ > best[0]:
+                best = (r_, o)
     off = best[1]
     passes = passes_from_ref(t, ref['hip_x'], speed)
     mids, offs = [], []
     for p0, p1, _ in passes:
         m = (tau + off >= p0) & (tau + off <= p1)
         bb = (-2, off)
-        for j in range(2):
-            y = raw[m, j]
+        for (c, j), q0 in raw.items():
+            y = q0[m]
             ok = ~np.isnan(y) & (y < 75)
             if ok.sum() < 30:
                 continue
             for o in np.arange(off - 1.0, off + 1.0, 0.02):
-                c = np.corrcoef(np.interp(tau[m][ok] + o, t, F[:, j]), y[ok])[0, 1]
-                if c > bb[0]:
-                    bb = (c, o)
-        if bb[0] > 0.4:
+                r_ = np.corrcoef(np.interp(tau[m][ok] + o, t, F[:, j]), y[ok])[0, 1]
+                if r_ > bb[0]:
+                    bb = (r_, o)
+        if bb[0] > 0.6:
             mids.append(np.mean(tau[m]))
             offs.append(bb[1])
-    drift, b = np.polyfit(mids, offs, 1) if len(mids) >= 3 else (0.0, off)
-    print('  clock: sync r %.2f (needs > 0.9), t_ref = t_pi + %.2f + %.5f t_pi, %d passes' % (best[0], b, drift,
-                                                                                            len(passes)))
+    mids, offs = np.array(mids), np.array(offs)
+    keep = np.ones(len(mids), bool)
+    drift, b = 0.0, off
+    for _ in range(3):
+        if keep.sum() < 3:
+            break
+        drift, b = np.polyfit(mids[keep], offs[keep], 1)
+        keep = np.abs(offs - (b + drift * mids)) <= 0.15
+    print('  clock: sync r %.2f (needs > 0.9), t_ref = t_pi + %.2f + %.5f t_pi, %d passes; per-pass offsets %s%s' % (
+        best[0], b, drift, len(passes), np.round(offs, 2).tolist(),
+        '' if keep.all() else ' (dropped %d)' % (~keep).sum()))
     return t_pi_to_ref(tau, b, drift), F, t, passes
 
 

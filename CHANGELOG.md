@@ -5,6 +5,32 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.3.2 - 2026-11-23 (morning) - the learned model works on the Pi's own keypoints; sturdier clock alignment
+
+**Pi's own keypoints (YOLOv8 on the Hailo), 13:01 walk, trained and evaluated on the Pi** (leave one pass out,
+frames where both cameras see the leg, swing peaks matched within +-0.2 s):
+
+| Model | Leg | Frames r | RMSE | Reference peak | Model peak | Median peak error | Bias | 95 % LoA |
+|---|---|---|---|---|---|---|---|---|
+| gradient boosting | L | 0.89 | 6.0 | 45.0 | 44.1 | 6.4 | -4.0 | -20.3 to +12.2 |
+| gradient boosting | R | 0.89 | 6.6 | 48.8 | 48.8 | 7.1 | -3.8 | -24.0 to +16.4 |
+| ridge | L | 0.89 | 6.0 | 45.0 | 42.3 | 4.7 | -4.9 | -19.4 to +9.5 |
+| ridge | R | 0.90 | 6.5 | 48.8 | 46.3 | 8.7 | -4.3 | -23.7 to +15.0 |
+
+So the approach does not depend on MoveNet: the Pi's own keypoints give the same or slightly better agreement.
+The gates (5 / 3 / 10 deg) are still not met with one walk. The median peak matches, but some strides are
+under-read by 15-25 deg, so the mean bias is about -4 deg and the limits of agreement are wide. That fits a model
+pulled toward the average by label noise in the reference (the same leg reads 33 deg on the iPad's side and 55 deg
+on the far side), which more data alone will not fix: a better reference will.
+
+**Clock alignment fix (`train_angle_model.py` `align`):** all four camera/leg raw angles are tried, a pass counts
+only at r > 0.6, and the drift line is refitted without passes > 0.15 s off it. The v3.3.1 alignment on the Pi data
+found a drift of 0.00015 where the plane angles gave 0.0017 (0.4 s apart by the last pass). On the laptop
+MoveNet data the new alignment gives 0.00172, matching the plane-angle estimate; the peak bias there did not
+change (-5 to -6 deg), so the bias is not a timing artefact.
+
+---
+
 ## v3.3.1 - 2026-11-23 (morning) - learned angle in the live session; held-out test mode; stricter evaluation
 
 **What changed**
