@@ -5,6 +5,16 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.3.9 - 2026-11-23 (evening) - learned model runs on one thread in the live session
+
+**Issue:** on the Pi, the gbm model took 36.9 ms per frame with the default thread count and 23.6 ms with one thread
+(300 frames of walk 3); live predictions come one frame at a time, where extra threads only add overhead.
+**Changed:** `AngleModel` limits OpenMP to one thread (threadpoolctl) when it loads a gbm model.
+**Checked:** on the Pi the final model loads and predicts every frame of walk 3 (left median 7 deg, 95th percentile
+27 deg; right 11 / 30 deg).
+
+---
+
 ## v3.3.8 - 2026-11-23 (evening) - one reference for all walks (YOLOv8x); final model trained on the Pi
 
 **Issue:** v3.3.7 compared walks against MoveNet because YOLOv8x had only run on walk 1, and the two references

@@ -91,6 +91,11 @@ class AngleModel:
             try:
                 import sklearn  # noqa: F401
                 self.kind, self.gbm = 'gbm', d['gbm']
+                try:   # v3.3.9: one frame at a time is faster on one thread (Pi 5: 23.6 vs 36.9 ms per frame)
+                    from threadpoolctl import threadpool_limits
+                    self._threads = threadpool_limits(limits=1, user_api='openmp')
+                except Exception:
+                    pass
             except ImportError:
                 self.kind = 'ridge'
         if d.get('feature_version') != FEATURE_VERSION:
