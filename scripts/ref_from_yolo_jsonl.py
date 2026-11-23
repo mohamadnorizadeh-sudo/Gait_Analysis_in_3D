@@ -23,12 +23,17 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('jsonl')
     ap.add_argument('out_csv')
-    ap.add_argument('--fps', type=float, default=30.0, help='frame rate of the video given to yolo_big_keypoints.py')
+    ap.add_argument('--fps', type=float, default=30.0,
+                    help='frame rate of the video given to yolo_big_keypoints.py (used only when lines have no "t")')
+    ap.add_argument('--hip-width', type=float, default=960.0,
+                    help='v3.3.5: hip_x is rescaled to a frame this wide (pass detection assumes 960 px)')
     a = ap.parse_args()
-    rows = []
+    rows, scale = [], 1.0
     for line in open(a.jsonl):
         r = json.loads(line)
-        t = r['i'] / a.fps
+        if 'W' in r:
+            scale = a.hip_width / float(r['W'])
+        t = r['t'] if 't' in r else r['i'] / a.fps
         people = r.get('cam0') or []
         if not people:
             rows.append([t, np.nan, np.nan, 0.0, 0.0, np.nan])
@@ -36,7 +41,7 @@ def main():
         p = max(people, key=lambda q: q.get('s', 0))
         xy, c = np.array(p['xy'], float), np.array(p['c'], float)
         rows.append([t, flex(xy[11], xy[13], xy[15]), flex(xy[12], xy[14], xy[16]),
-                     min(c[11], c[13], c[15]), min(c[12], c[14], c[16]), (xy[11, 0] + xy[12, 0]) / 2])
+                     min(c[11], c[13], c[15]), min(c[12], c[14], c[16]), (xy[11, 0] + xy[12, 0]) / 2 * scale])
     R = np.array(rows)
     bad = ~np.isfinite(R[:, 1]) | ((R[:, 3] < 0.005) & (R[:, 4] < 0.005))   # no person, or no visible legs
     idx = np.arange(len(R))

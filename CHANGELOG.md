@@ -5,6 +5,31 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.3.5 - 2026-11-23 - laptop training kit (works without Claude) + Pi desktop buttons for side recordings
+
+**Why:** the user asked that the analysis can be finished on the laptop if the assistant is unavailable during
+today's recordings.
+
+**Changed:**
+- `scripts/offline_pipeline.py` (new): one folder per walk (`walk1..walk4`, `test*`) with the iPad video and the Pi
+  recording folder; runs YOLOv8x on each iPad video once, builds the reference, trains with leave-one-walk-out
+  cross-validation, tests once on the held-out walk, writes `report.txt`, the model, and the exact command to retrain
+  on the Pi (the Pi's scikit-learn 1.4.2 cannot load a gbm pickle made with a newer version; the ridge JSON works
+  anywhere). Clock search widened to an iPad head start of 0-60 s (still found 13.31 s on the 13:01 walk).
+- `scripts/yolo_big_keypoints.py`: `--fps-out 30` keeps about 30 frames per second of a 60 fps iPad video, and each
+  line now has `t` (seconds) and, on the first line, the frame size.
+- `scripts/ref_from_yolo_jsonl.py`: uses `t` when present and rescales `hip_x` to a 960 px wide frame, because pass
+  detection (`--speed 12` px/s) was tuned on 960x540 video.
+- `laptop_kit/` (new): `RUN_ANALYSIS.command` (double-click on the Mac) and `HOW_TO.txt` (record, copy, analyse,
+  deploy). On the Pi desktop: new "Start side recording" / "Stop side recording" launchers
+  (`start_side_session.sh` / `stop_side_session.sh`); the existing launchers are unchanged.
+
+**Camera check, 23 Nov (new, closer camera position):** with the user at 40 cm and at 50 cm behind the walker, after
+small tilts both cameras find hip, knee and ankle of both legs; leg confidence 0.8-0.98 (cam0 at 40 cm: right hip
+at the top edge). Off-side angle about 22-30 deg near and 30-36 deg far (it was 46-52 deg on 22 Nov).
+
+---
+
 ## v3.3.4 - 2026-11-23 - YOLOv8x result: better as the iPad reference, no gain on the Pi
 
 **What was tested:** YOLOv8x-pose (the largest model) was run on the user's laptop (Apple GPU, about 0.03-0.05 s

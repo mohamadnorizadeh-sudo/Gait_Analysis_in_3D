@@ -54,12 +54,17 @@ def main():
     ap.add_argument('--device', default='auto', help='auto | mps | cpu | cuda')
     ap.add_argument('--imgsz', type=int, default=640)
     ap.add_argument('--conf', type=float, default=0.25)
+    ap.add_argument('--fps-out', type=float, default=0.0,
+                    help='v3.3.5: keep about this many frames per second (e.g. 30 for a 60 fps iPad video); 0 = all')
     a = ap.parse_args()
     import torch
     from ultralytics import YOLO
     model = YOLO(a.model)
     cap = cv2.VideoCapture(a.video)
     n = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    fps_in = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    W, H = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    step = fps_in / a.fps_out if a.fps_out and a.fps_out < fps_in else 1.0
     cams = ['cam0', 'cam1'][:a.split]
 
     dev = a.device
@@ -85,21 +90,28 @@ def main():
             cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
     print(f'{a.model} on {a.video}: {n} frames x {a.split} view(s), device {dev}', flush=True)
 
-    t0, i = time.time(), 0
+    t0, i, k, nxt = time.time(), 0, -1, 0.0
+    n_out = int(n / step) if n > 0 else 0
     with open(a.out, 'w') as f:
         while True:
             ok, im = cap.read()
             if not ok:
                 break
+            k += 1
+            if k + 1e-6 < nxt:
+                continue
+            nxt += step
             res = model.predict(views(im, a.split), imgsz=a.imgsz, conf=a.conf, device=dev, verbose=False)
-            rec = {'i': i}
+            rec = {'i': i, 't': round(k / fps_in, 4)}
+            if i == 0:
+                rec.update({'W': W, 'H': H, 'fps_in': fps_in})
             for cam, r in zip(cams, res):
                 rec[cam] = people(r)
             f.write(json.dumps(rec) + '\n')
             i += 1
             if i % 100 == 0:
                 dt = (time.time() - t0) / i
-                print(f'{i}/{n} frames, {dt:.2f} s per frame, about {dt * (n - i) / 60:.0f} min left', flush=True)
+                print(f'{i}/{n_out} frames, {dt:.2f} s per frame, about {dt * (n_out - i) / 60:.0f} min left', flush=True)
     print(f'done: {i} frames -> {a.out}', flush=True)
 
 
