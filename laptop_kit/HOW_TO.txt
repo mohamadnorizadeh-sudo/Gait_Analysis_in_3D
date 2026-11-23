@@ -1,0 +1,40 @@
+GAIT TRAINING KIT - what to do if Claude is not available (23 Nov 2026, repo version v3.3.5)
+==========================================================================================
+
+A. RECORD (on the Pi, for every walk)
+   1. Start the iPad recording first (side view, whole body, both legs visible).
+   2. Pi: double-click "Start side recording" on the Pi desktop
+      (or in a Pi terminal:  ~/gait_v2/scripts/start_side_session.sh )
+   3. Stand still 3 s, then 3 slow deep knee bends holding the walker (this syncs the clocks;
+      must happen within the first 30 s of the Pi recording).
+   4. Walk past the iPad and back, 8 passes, mixing near (~40 cm) and far (~50 cm) from the cameras.
+      walk1, walk2: normal | walk3: 4 shuffle + 4 normal | walk4: 4 stiff-left + 4 stiff-right
+      test:  2 normal, 2 shuffle, 2 stiff-left, 2 stiff-right (in this order)
+   5. Pi: double-click "Stop side recording" (or ~/gait_v2/scripts/stop_side_session.sh), then stop the iPad.
+   The Pi saves each walk in ~/gait_v2/runs/side_session_YYYYMMDD_HHMMSS/
+
+B. COPY TO THE MAC (one folder per walk on the Desktop: Gait_Train/walk1 ... walk4, test)
+   - iPad video (AirDrop) -> put the .MOV directly into e.g. ~/Desktop/Gait_Train/walk1/
+   - Pi recording -> in Mac Terminal (same Wi-Fi):
+       scp -r fruit@10.75.55.70:gait_v2/runs/side_session_YYYYMMDD_HHMMSS ~/Desktop/Gait_Train/walk1/
+     (ls on the Pi:  ls ~/gait_v2/runs   shows the folder names; the newest is the last walk)
+
+C. ANALYSE: double-click RUN_ANALYSIS.command (this folder).
+   - YOLOv8x runs on each iPad video once (~5-10 min per walk), then training + the held-out test.
+   - Result: ~/Desktop/Gait_Train/report.txt  -> look for "HELD-OUT TEST" and "RESULT: PASS/FAIL".
+     Gates: median swing-peak error <= 5 deg, |bias| <= 3 deg, 95% limits within +-10 deg.
+   - If the test walk's passes were done in another order, run in Terminal:
+       ~/Downloads/Gait_Train_Kit/RUN_ANALYSIS.command --styles normal,normal,shuffle,...
+
+D. PUT THE MODEL ON THE PI
+   Quick (ridge model, works on any version):
+       scp ~/Desktop/Gait_Train/model/angle_model_ridge.json fruit@10.75.55.70:gait_v2/config/
+     then on the Pi:  cd ~/gait_v2 && python3 scripts/07_side_session.py --model config/angle_model_ridge.json
+   Best (gbm model, trained on the Pi itself because the Pi has scikit-learn 1.4.2):
+     copy each walk's ref_ipad_yolov8x.csv next to its recording on the Pi and run the exact command printed at
+     the end of report.txt (it ends with --out config/angle_model.pkl). Then "Start side recording" uses it.
+
+E. WHEN CLAUDE IS BACK: send report.txt (or paste it) and say which walks were recorded.
+   Prompt you can use:  "Continue the smart-rollator knee-angle project (repo mohamadnorizadeh-sudo/
+   Gait_Analysis_in_3D, branch v2-rigid-3d, v3.3.5). I recorded walks with the new camera position and ran
+   Gait_Train_Kit; here is report.txt. Check the result, deploy the model to the Pi and update the CHANGELOG."

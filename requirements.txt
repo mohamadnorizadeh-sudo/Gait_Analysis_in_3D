@@ -1,0 +1,6 @@
+# Picamera2 and OpenCV come from apt on Raspberry Pi OS:
+#   sudo apt install -y python3-picamera2 python3-opencv
+numpy>=1.24
+ultralytics>=8.1
+ncnn            # optional, for scripts/05_export_ncnn.py
+pytest
