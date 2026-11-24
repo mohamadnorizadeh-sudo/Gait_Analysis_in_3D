@@ -1,0 +1,110 @@
+# Independent review: learned knee angle for the smart rollator (v3.2.x to v3.4.1, plus the "point 5" finding)
+
+Reviewed: branch `v2-rigid-3d` at `958796c` (v3.4.1). Two newer commits (`1eec427` v3.5.0, `be751e0` v3.6.0) landed
+while this review was running. They are out of scope except where noted (v3.5.0 writes up point 5; v3.6.0 adds
+doctor-facing reports). No repository files were modified. All numbers below were recomputed in this container from
+freshly decoded copies of the packed data (`/home/claude/work/review/data/`). Analysis scripts are in
+`/home/claude/work/review/scripts/` (`a1`..`a24`, `common.py`, `static_check.py`). Logs:
+`headline.log`, `ablation_gbm.log`, `ablation_ridge.log`.
+
+---
+
+## (a) Verdict
+
+The headline numbers reproduce exactly (left 2.2 / +2.9 / -3.9..+9.6; right 6.2 / -1.7 / -16.8..+13.4; 34 s run),
+the leave-one-walk-out CV numbers in the CHANGELOG reproduce, the live `push()` path gives the same values as the
+offline path (max difference 0.0 over 2258 frames), and the test-walk clock alignment is confirmed independently by the
+knee bends (47.82 s vs 47.82 s). There is no data leakage between training and test. The conclusions drawn from these
+numbers are stronger than the evidence allows, though. (1) The left-leg PASS is borderline and not robust. Bias +2.9
+(95 % CI +1.4..+4.4) sits against a gate of 3, and the upper limit of agreement 9.6 (CI 7.0..12.2) against a gate of
+10. A pass-level bootstrap passes only 53 % of the time. The PASS flips with a +-0.3 s pairing window, a constant clock
+offset, or a 0.1 s clock shift. Pooled leave-one-walk-out CV fails (5.6 / -4.8 / -21..+11). (2) The validation design
+cannot tell measurement apart from inference across legs. Models that never see the scored leg reach a test median
+error of 3.5-4.6 deg on the left leg, and the left PASS disappears when the right-leg features are taken from other
+walking moments. (3) The right knee is barely observed: cam1 is effectively blind to it. The point-5 hypothesis
+("right inferred from left") is mostly not what drives the deployed gbm's right leg. The right-leg failure comes mainly
+from too little observation plus out-of-distribution poses. The broader worry, that cross-leg coupling would break in
+asymmetric gait, is real, and for the gbm it is stronger on the left leg. (4) The reference is a pose model on loose
+trousers. Two pose models disagree by about 14 deg on left swing peaks. The 8-pose static check that chose MoveNet is
+not statistically conclusive and does not sample the shin tilts that occur in walking. Overall this is a promising
+single-subject feasibility result with careful engineering, but neither leg is validated to +-5 deg. It is not yet fit
+for clinical use, and right-leg output and the v3.6.0 recommendations should not reach clinicians.
+
+---
+
+## (b) Findings ranked by severity
+
+| # | Severity | Finding | Evidence (recomputed) | Concrete fix |
+|---|---|---|---|---|
+| C1 | **Critical** | **The evaluation cannot distinguish "measuring the leg" from "inferring it from the other leg's gait phase"; the left PASS relies on that coupling.** In symmetric training gait one leg predicts the other, and nothing in the protocol penalises using that. | Models given **only the other leg's** features (`a8_ablation.py`): test L median 4.6 (gbm) / 3.5 (ridge), frame r 0.76 / 0.72; R 7.5 / 12.5, r 0.76 / 0.52. With pure other-leg features (own normalisation), gbm test L 3.8, R 5.7, the latter *better* than the full model's 6.2. Deployed gbm, other leg's features swapped in from other walking frames, 5 shifts (`a10`): **L median 5.8, bias -5.6, LoA -22.5..+11.4, gates pass 0/5** (baseline PASS); R 6.2 / -4.6 / -18.2..+9.0. Ridge R changes by 7.8 deg on average (r 0.87 -> 0.64). | Make each leg's model use own-leg geometry only (own hip origin, own leg length; costs about 0.6-1.3 deg median on the test), or train with other-leg desynchronisation augmentation. Add a "desync test" as a gate, and an asymmetric-gait test with **both** legs referenced (e.g. a locked knee brace on one leg). |
+| C2 | **Critical** | **The right knee is not observed well enough to measure.** cam1 sees almost nothing of the right-knee bend, and the deployed model uses cam0's good view of it only weakly. | Raw cam1 R angle vs near-leg R reference (`a4`): r 0.70 (w1), 0.29 (w2), -0.17 (w3), 0.10 (test); cam0 R: 0.70 / 0.66 / 0.57 / 0.69. During the test knee bends (ref max L 108.5, R 92.8; `a3`), raw cam1 R max is **27.6 deg** vs cam0 R 100.7. Model max L 64.4, R 31.6. At the 8 deepest frames (ref R 91) the R model gives 16.4 (`a23`). A right-leg model on **cam0 own-leg features only** gives 73.9 (gbm) / 62.6 (ridge); on cam1 only, 14.7 / 17.6 (`a15`). | Re-aim cam1 (or add a camera) until the raw right-knee angle shows knee bends (>80 deg) and correlates r > 0.6 in walking. Until then, suppress right-leg output in the UI, the knee CSV and `gait_report.py`. |
+| M1 | Major | **The left-leg PASS is borderline and not robust; the cross-validation is the better estimate and fails.** | Bias CI +1.4..+4.4 (gate 3); upper LoA 9.6, CI 7.0..12.2 (gate 10); bootstrap over the 4 passes: P(all gates pass) = 0.53 (`a12`). Window +-0.3 s -> LoA +10.5 FAIL; constant offset 47.75 s (no drift) -> +10.4 FAIL; clock -0.1 s -> +10.7 FAIL (`a11`, `a12`). Pooled LOSO-CV gbm L (n 92): 5.6 / -4.8 / -21.1..+11.4. Test L beats every CV fold (fold medians 3.9 / 7.6 / 5.5, biases all negative vs test +2.9). The test has only 1 L stride > 55 deg; in CV the model reads -10.3 deg at > 55 deg (model = 0.84 x ref + 2.1; R 0.79 x ref + 5.1) (`a22`). | Report the left leg as "borderline / inconclusive". Report CV and test together with CIs. Record 3+ further test walks covering 20-70 deg before claiming a PASS. |
+| M2 | Major | **The swing-peak statistic flatters the model and is not a per-stride measure.** | (i) Taking the model's max within +-0.2 s of the reference peak adds about +2 deg: with the model read at the reference peak time, L bias is +0.7 instead of +2.9, R -5.1 instead of -1.7 (`a11`). (ii) Only about 46 of ~78 strides in the test passes are scored (prominence 12): e.g. pass 5 (low-flexion R) scores 5 of ~11 (`a17`), so stiff or low-amplitude strides, the clinically important ones, are under-sampled. (iii) The 21-23 strides come from 4 passes per leg; the LoA ignores this clustering. | Segment strides independently (e.g. on the Pi signal or on heel strikes); take each signal's own peak per stride; report the fraction scored; use repeated-measures Bland-Altman with CIs; drop or lower the prominence threshold. |
+| M3 | Major | **The reference is not validated to the accuracy the gates assume, and the static check does not settle which pose model to trust.** | Near-leg swing peaks, same iPad video (`a20`): YOLOv8x minus MoveNet, L median -14.1 / -14.5 / -14.0 deg (w1-3), R -4.3 / -5.0 / -6.5. Static check (`static_check.py`): the 8 poses reproduce (MoveNet -1.4 / 5.8; YOLOv8x -5.5 / 8.3), but MoveNet is closer in only **4 of 8** poses (Wilcoxon p 0.38); bootstrap CI of MoveNet's mean error -6.0..+3.1. The mean hides a slope error (MoveNet = 0.82 x true + 4.4: +2.6 deg below 30 deg tilt, -8.1 above 60 deg, n = 3). **No pose in the 30-60 deg range** is retained (the walking-relevant shin tilt at swing peak is about 20-45 deg); the two near 48-49 deg were excluded. The poses are seated, not walking. MoveNet ran on 4K and YOLOv8x on 1080p, while the walking references are 960x540 (hip_x max 963). The phone mounting offset of 4-5 deg is the same size as the effect. The "knee angle" result equals the shin result by construction (model thigh + phone shin). | Use a reference independent of pose models for walking: an IMU on thigh and shank of **both** legs, or an electrogoniometer, under the same trousers. If a static check is repeated, cover 0-70 deg (including 20-50 deg) with a goniometer, in standing/stepping poses, at the walking video's resolution, with n >= 20 per leg and pre-set exclusion rules. |
+| M4 | Major | **The "raw 2D" baseline in the CHANGELOG overstates the model's right-leg gain; the plane-method fallback uses the blind camera for R.** | The reported raw R baseline is cam1 (bias -18.5, LoA -47..+10). The cam0 raw R angle alone on the test gives median 6.5, bias +5.0, LoA -12.9..+22.8 (`a14`), a median as good as the model's 6.2. For L, the best camera (cam1) gives 7.2 vs the model's 2.2, so the left-leg gain is real. `07_side_session.py` defaults to `--source L=cam0,R=cam1`, so if the model fails to load (e.g. a scikit-learn mismatch), the displayed R comes from cam1. | Report the best-camera baseline per leg. Swap the default source mapping (or pick per leg the camera whose raw angle correlates with the reference). |
+| M5 | Major | **Generalisation and clinical-validity risks.** | One subject simulating abnormal gait; one camera placement (keypoint pixel positions shift 20-50 px between sessions, `a7`); one set of clothes; about 90 scored strides per leg across all CV folds. The gbm memorises: in-sample RMSE **0.02 deg** (L) / 1.6 (R) vs CV 7.5 / 9.0 (`a16`). Range: L near-leg labels max 73 deg (p99 56), and trees cannot output more; R labels reach 110 deg (walk 1, one pass; 38 frames > 75), so "training max ~70" holds for L only. `flex()` returns an **unsigned** angle (0-180), so genu recurvatum (common after stroke) is read as flexion, and v3.6.0's `hyperextension_deg=-5` flag essentially cannot fire. Each leg is trained and scored only in one walking direction (near-leg rule); the other half of live time is unvalidated (no gross direction effect found, `a18`). No out-of-distribution warning: the knee bends were silently read as 64 / 16 deg. | Sign the angle (walking direction or foot orientation in each camera). Add an out-of-distribution flag (distance to the training feature distribution, or gbm-ridge disagreement > X deg -> show "--"). Add subjects, clothing, and a re-mounted camera before claiming generality. Gate on stance-phase angles too. |
+| M6 | Major | **The near-leg convention is inconsistent across scripts.** | `train_angle_model.near_legs`: walking toward image-right gives the R leg (geometrically correct for unmirrored video). `walk_compare_channels.py:144` and `walk_compare_ref.py:81`: `near = 'R' if dd < 0 else 'L'`, the opposite. The data supports the training script: near-leg reference peaks exceed far-leg peaks in 8 of 8 leg x walk cases (e.g. test R 44 vs 23), and Pi same-leg correlations are positive while cross-leg ones are about 0 (`a4`, `a6`). Earlier CHANGELOG statements built on `walk_compare_*` ("33 deg on the iPad's side, 55 deg on the far side", v3.3.1/v3.3.2) probably have near and far swapped. | Use one shared function. Add an automatic per-pass check (e.g. the near leg's peak must exceed the far leg's, or agree with the Pi's best-camera timing) so a mirrored or rotated video cannot silently invert the labels. Annotate the old CHANGELOG entries. |
+| m1 | Minor | The deployed model is not the evaluated model. | Live and offline paths match for a given pickle (0.0 difference, `a21`). The live model was trained on the Pi (scikit-learn 1.4.2); the offline test retrains in another environment (scikit-learn 1.9.1 here). The README says the test ran with the MoveNet-trained `angle_model.pkl`, while v3.4.0 says that switch would happen "next time the Pi is on". The test's `angles.csv` (live `L_model`/`R_model`) is not archived. | Score the exact deployed pickle (`--load`) on the Pi, and archive and compare `angles.csv`. |
+| m2 | Minor | Frame-rate shift between training and live. | Training walks: mean frame interval 0.099 s (no model running; w1 `config.json` says `model: null`); test/live: 0.119 s, p95 0.143 (gbm in the loop). The k-1 and k-2 lag features span about 20 % more time live. The offline test already includes this, but the gap changes with CPU load. | Record training walks with the model running, or run the model in a separate thread, or use time-based lags. |
+| m3 | Minor | Training uses frames that are never scored, including empty ones. | Labelled but `valid()` False: w1 48 L / 118 R, w3 18 / 69. Walk 1 "pass 0" (ref 11.6-20 s = Pi 0-5.8 s, the user walking into place) has **no valid Pi frames**: features all 0, labels 19-50 deg (`a19`). | Train only on `V` frames. Require Pi visibility in pass detection. |
+| m4 | Minor | Clock-alignment details. | Fitted drift ranges from -0.00105 to +0.00045 across walks (1000 ppm is implausible for clock crystals; the reference time is frame index / nominal fps). The same walk aligned with the MoveNet vs the YOLOv8x reference differs by up to 0.12 s. Per-pass optima can sit on the +-1 s search edge (global offset true + 1 s -> all 6 passes land exactly on the edge, `a24`). The sync window is fixed at 3-30 s, but the bends fell partly or fully outside it in 3 of 4 walks (27-36 s in walks 2-3, 48-57 s in the test). The README says "all passes within 0.25 s", but only 6 of 8 passes confirmed. The guard itself works: offsets 1.5 s or more off are rejected, and within +-1 s it converges back. | Use video presentation timestamps (PTS). Find the knee bends automatically over the whole recording. Reject per-pass optima at the window edge. Report the alignment uncertainty and propagate it (+-0.1 s flips the L PASS). |
+| m5 | Minor | Code issues in `angle_model.py` and the live session. | `AngleModel`: with scikit-learn missing, `pickle.load` fails before the `try: import sklearn`, so the `.pkl`'s built-in ridge fallback is unreachable (only `_ridge.json` works). `features()` maps NaN to 0, so a missing point in a lag frame looks like a straight leg. Both legs' coordinates are normalised by the **left** leg's 2D length, which couples R features to L foreshortening. `best_person` (longest legs x confidence) could pick a bystander standing close to the walker. The live output is clipped to -10..150, the offline output is not. | Load the ridge from the pickle's dict without scikit-learn (separate file or try/except around the load); use a missing-value indicator; normalise per leg; reject people whose hips are far from the expected image region. |
+| m6 | Minor | Reproducibility and bookkeeping. | The MoveNet "cleaning" step (conf < 0.3 or angle > 110 deg interpolated) is not in the repo. The test walk's per-pass styles are not recorded (`--styles` unused), so stiff-leg accuracy cannot be reported. `offline_pipeline.py` and `HOW_TO.txt` still build YOLOv8x references after v3.4.0 switched to MoveNet. The cleaning cap at 110 deg also truncates deep knee bends in the reference (L max 109.3-110). | Commit the cleaning script. Record pass styles. Align the laptop kit with the chosen reference. |
+| m7 | Minor | The gates are looser than the stated goal, and only one gait event is gated. | Goal "+-5 deg of reference" vs gate LoA +-10. On the test, 83 % of L strides and 38 % of R strides are within +-5 deg (`a17`). Only swing peaks are gated; frame RMSE is 7.6 / 6.5 deg, and stance-phase flexion and timing are not gated. | State the gates relative to the goal (e.g. 95 % of strides within +-5). Add stance-phase and whole-cycle metrics. |
+| m8 | Minor | Process and claims. | The v3.4.1 alignment fallback was written after seeing the first test result. It is a fix for an obvious failure and is confirmed independently by the knee bends, but it is still a test-informed change and should be disclosed. v3.5.0 attributes the right-leg failure to "inferred from the gait rhythm", which `a9`/`a23` largely do not support for the gbm (see claim 5). v3.6.0 adds clinician-facing "recommendations" on top of a measurement that fails its own gates (R) and is borderline (L). | Mark the test as "used once for alignment debugging". Correct the v3.5.0 explanation. Keep `gait_report.py` research-only until the gates are met on new walks. |
+
+---
+
+## (c) Claims
+
+| Claim | Status | Basis |
+|---|---|---|
+| 1. Held-out test, swing peaks: L 2.2 / +2.9 / -3.9..+9.6 PASS; R 6.2 / -1.7 / -16.8..+13.4 FAIL | **Partly supported** | Reproduced exactly (n 23 / 21). The test walk was truly unseen (no leakage; CV is honest across walks). But the L PASS is within 0.1-0.4 deg of two gates; its CIs straddle them; bootstrap P(pass) = 0.53; it is sensitive to window, alignment and drift choices; about 2 deg of the bias comes from the max-in-window pairing; pooled CV fails; and the PASS does not survive desynchronising the right-leg features (C1, M1, M2). The R FAIL is solid. |
+| 2. Static check: MoveNet closer to the shin phone than YOLOv8x (-1.4 vs -5.5; 8 poses) | **Partly supported** | Numbers reproduce. The advantage exists only at large tilts (> 60 deg, n = 3: -8.1 vs -15.8). Overall 4 of 8 poses each way, p 0.38. No poses at walking-relevant tilts, seated only, resolution confound, mounting offset of the same size as the effect (M3). |
+| 3. Near-leg labels; walking toward image-right shows the right side | **Supported** (for `train_angle_model.py`) | Geometrically correct for unmirrored video. Data agree: near-leg peaks > far-leg in 8 of 8 cases; Pi same-leg correlation positive, cross-leg about 0. Caveats: two other scripts use the opposite rule (M6); the far-leg reference is not useless (it correlates with the Pi as well as the near leg, but is 4-20 deg lower); and the rule leaves each leg validated in only one walking direction. |
+| 4. Clock alignment from knee bends or walking; per-pass drift; new fallback | **Supported, with caveats** | Test offset confirmed independently by the knee bends: 47.82 s (r 0.975) vs drift fit 47.824 s at the bends. The guard rejects offsets 1.5 s or more off and self-corrects within +-1 s. Alignment uses raw angles, not the model, so it cannot inflate model results directly. But +-0.1 s flips the L PASS; drift estimates vary implausibly between walks; there is a search-edge artefact (m4). |
+| 5. Knee bends: model L ~57-64, R ~15-32 vs ref ~90-110; cam1 R r ~0, cam0 R 0.50-0.65; R "partly inferred from L" | **Observations supported; interpretation partly supported** | Reproduced: model max L 64.4, R 31.6; ref 108.5 / 92.8. cam1 R r 0.70 / 0.29 / -0.17 / 0.10 (w1 / w2 / w3 / test); cam0 R 0.57-0.70. For the deployed gbm, **R depends mainly on its own leg**: desynchronising own-R features drops r 0.89 -> 0.16, desynchronising the L features only 0.89 -> 0.85 (3 deg mean change). At the deepest knee-bend frames, setting the L features to standing raises R only from 16 to 21. The R failure is under-observation (cam1 blind, cam0 used weakly) plus out-of-distribution poses (R labels already reach 110 deg, so range is not the R cause). The worry about asymmetric gait is valid, but it applies **more to the left leg** (L loses its PASS when the R features are desynchronised; with R features set to standing, L at the knee bend drops from 60 to 48) and to the ridge fallback's R leg (C1). |
+
+---
+
+## (d) Prioritised recommendations
+
+1. **Stop right-leg output reaching users** (UI, knee CSV, `gait_report.py`) until cam1 (or a new camera) shows the
+   right-knee bend (raw angle > 80 deg in knee bends, r > 0.6 with the reference in walking). Swap the plane-method
+   source mapping for R to cam0 in the meantime.
+2. **Remove cross-leg shortcuts by design**: per-leg models on own-leg features with own-leg normalisation, or
+   other-leg desynchronisation augmentation. Add a desync stress test, i.e. "the score must not get worse when the
+   other leg's features are shuffled", next to the accuracy gates.
+3. **Get a reference that is not a pose model**: IMUs (thigh + shank) or electrogoniometers on **both** legs during the
+   same walks, under the same loose trousers. This removes the near-leg restriction, the MoveNet-vs-YOLOv8x question
+   (14 deg) and the static-check ambiguity in one step.
+4. **Test what the device is for**: real asymmetric gait (a locked knee brace on one leg, then the other), several
+   walks, more than one person, a re-mounted camera, with per-style results recorded via `--styles`.
+5. **Fix the statistics before the next test**: independent stride segmentation, each signal's own peak, fraction of
+   strides scored, repeated-measures Bland-Altman with CIs, CV and test reported together, gates aligned with the
+   +-5 deg goal (e.g. 95 % of strides within +-5), plus stance-phase metrics. Fix these rules before looking at the
+   new test data.
+6. **Make the live system honest about what it does not know**: an out-of-distribution flag (feature-space distance
+   or gbm-ridge disagreement) that shows "--"; signed knee angle (so hyperextension is visible); run the model off the
+   capture thread or use time-based lags; score and archive the exact deployed pickle and its `angles.csv`.
+7. **Housekeeping**: commit the MoveNet cleaning script; use video PTS for the reference time base; detect sync knee
+   bends anywhere in the recording and reject per-pass offsets at the search edge; unify the near-leg function across
+   scripts and annotate the affected old CHANGELOG entries; train only on `valid()` frames; correct the v3.5.0
+   explanation and add a "not validated" banner to the v3.6.0 report.
+
+---
+
+### Reproduction
+
+    cd /home/claude/work/review/scripts
+    python3 a1_perpass.py        # per-pass test breakdown (writes data/test_pred.npy, needs data/review_model.pkl)
+    python3 a8_ablation.py gbm   # own-leg / other-leg / per-camera ablations (CV + test)
+    python3 a10_desync_inpass.py # other-leg desynchronisation with walking donor frames
+    python3 a11_peaks_sens.py    # pairing window and clock-shift sensitivity
+    python3 a12_boot.py          # CIs, pass bootstrap, constant-offset alignment
+    python3 a13_kb_align.py      # independent knee-bend alignment of the test walk
+    python3 a15_kb_models.py; python3 a23_kb_attr.py   # knee-bend outputs and attribution
+    python3 static_check.py      # static-check statistics
+
+`data/review_model.pkl` was produced by the headline command (output in `../headline.log`), run on copies of the
+data decoded with `pi_slim_decode.py` into `/home/claude/work/review/data/`.

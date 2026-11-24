@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Gait summary, deviation flags and draft recommendations for the doctor, from one session's knee CSV (v3.6.0).
+"""Gait summary, deviation flags and draft recommendations for the doctor, from one session's knee CSV (v3.6.1).
 
     python3 scripts/gait_report.py ~/gait_data/knee_angles/knee_angles_2026-11-24_12-30-05.csv
     python3 scripts/gait_report.py --latest            # newest file in ~/gait_data/knee_angles
@@ -14,9 +14,10 @@ What it does:
      (config/normative_knee.json, from Moreira et al. 2021) and flags deviations.
   4. Drafts recommendations for the doctor: walker speed and projected footprint (step-target) settings.
 
-This is decision support, not a diagnosis: every flag and recommendation is for a clinician to confirm. The default
-thresholds below are placeholders until the clinical team sets them. Right-knee values are not trustworthy with the
-camera position of 23-24 Nov (CHANGELOG v3.5.0); the report says so while that warning is set in the config.
+RESEARCH PROTOTYPE, not validated for clinical use (independent review, CHANGELOG v3.6.1). Every flag and
+recommendation is for a clinician to confirm, and the default thresholds below are placeholders until the clinical
+team sets them. v3.6.1: the right knee is left out of flags and recommendations by default (cam1 does not see it;
+--use-right includes it), and the hyperextension flag is off because the measured knee angle has no sign yet.
 """
 import argparse
 import csv
@@ -35,10 +36,11 @@ DEFAULTS = dict(
     swing_peak_low_sd=2.0,        # flag reduced swing flexion (stiff-knee pattern) below healthy mean - 2 SD
     asymmetry_pct=15.0,           # flag left/right swing-peak asymmetry above this symmetry index (%)
     stride_cv_pct=10.0,           # flag irregular stepping above this coefficient of variation of stride time (%)
-    hyperextension_deg=-5.0,      # flag knee hyperextension in stance below this angle
+    hyperextension_deg=None,      # v3.6.1: off; the knee angle is unsigned (0-180), so hyperextension reads as flexion
     stance_flexion_sd=2.0,        # flag excessive stance flexion above healthy mean + 2 SD
     min_strides=4,                # fewer strides than this per leg -> not enough data for that leg
     right_leg_warning=True,       # CHANGELOG v3.5.0: right knee poorly seen by cam1
+    use_right=False,              # v3.6.1: right knee excluded from flags/recommendations unless --use-right
 )
 
 
@@ -120,12 +122,14 @@ def report(path, cfg, norm):
         u, v = resample(t, y)
         S[leg] = summary(strides(u, v))
     st_all = [S[k]['stride_time'] for k in S if S[k]['n'] >= cfg['min_strides']]      # speed match on legs with enough strides
+    # (stride time comes from the walking rhythm, which both legs share, so the right leg may still help here)
     ref = None
     if st_all:
         T = float(np.median(st_all))
         ref = min(norm['speeds'], key=lambda s: abs(s['stride_time_s'] - T))
     flags, recs = [], []
-    for leg in ('left', 'right'):
+    judged = ('left', 'right') if cfg['use_right'] else ('left',)
+    for leg in judged:
         s = S[leg]
         if s['n'] < cfg['min_strides']:
             flags.append(dict(leg=leg, code='insufficient_data', text=f'{leg} knee: only {s["n"]} clean stride(s); not enough to judge'))
@@ -139,13 +143,13 @@ def report(path, cfg, norm):
             if s['stance_min'] > hi:
                 flags.append(dict(leg=leg, code='excess_stance_flexion', value=s['stance_min'], limit=round(hi, 1),
                                   text=f'{leg} knee: stays flexed {s["stance_min"]} deg in stance (healthy <= {hi:.0f} deg): crouched stance or forward lean on the walker'))
-        if s['stance_min'] < cfg['hyperextension_deg']:
+        if cfg['hyperextension_deg'] is not None and s['stance_min'] < cfg['hyperextension_deg']:
             flags.append(dict(leg=leg, code='hyperextension', value=s['stance_min'],
                               text=f'{leg} knee: hyperextends to {s["stance_min"]} deg in stance'))
         if s['stride_cv'] > cfg['stride_cv_pct']:
             flags.append(dict(leg=leg, code='irregular_stepping', value=s['stride_cv'],
                               text=f'{leg} leg: stride time varies {s["stride_cv"]} % (limit {cfg["stride_cv_pct"]:.0f} %): irregular stepping'))
-    if S['left']['n'] >= cfg['min_strides'] and S['right']['n'] >= cfg['min_strides']:
+    if cfg['use_right'] and S['left']['n'] >= cfg['min_strides'] and S['right']['n'] >= cfg['min_strides']:
         a, b = S['left']['swing_peak'], S['right']['swing_peak']
         si = abs(a - b) / ((a + b) / 2) * 100
         if si > cfg['asymmetry_pct']:
@@ -168,12 +172,16 @@ def report(path, cfg, norm):
     if 'irregular_stepping' in codes:
         recs.append(dict(target='footprint_projection', action='rhythm', cadence_steps_min=round(float(cad), 1) if np.isfinite(cad) else None,
                          text=f'Projected footprints: evenly spaced targets with a steady rhythm at about {cad:.0f} steps/min to regularise stepping.'))
-    warnings = ['Decision support only: thresholds are defaults until set by the clinical team.']
+    warnings = ['RESEARCH PROTOTYPE: knee angles not yet validated to +-5 deg (independent review, CHANGELOG v3.6.1); not for clinical decisions.',
+                'Decision support only: thresholds are defaults until set by the clinical team.']
     if cfg['right_leg_warning']:
-        warnings.append('Right-knee values are not reliable with the current camera position (CHANGELOG v3.5.0).')
+        warnings.append('Right-knee values are not reliable with the current camera position (CHANGELOG v3.5.0)'
+                        + ('.' if cfg['use_right'] else '; the right knee is shown but not used for findings or suggestions.'))
+    if cfg['hyperextension_deg'] is None:
+        warnings.append('Knee hyperextension cannot be detected yet: the measured angle has no sign.')
     return dict(file=os.path.basename(path), session_start_qatar=wall[0] if wall else None, duration_s=round(float(t[-1] - t[0]), 1) if len(t) else 0,
-                legs=S, matched_healthy_speed=ref, flags=flags, recommendations=recs, warnings=warnings,
-                generated=datetime.now().isoformat(timespec='seconds'), version='3.6.0')
+                legs=S, matched_healthy_speed=ref, flags=flags, recommendations=recs, warnings=warnings, right_used=bool(cfg['use_right']),
+                generated=datetime.now().isoformat(timespec='seconds'), version='3.6.1')
 
 
 def text(r):
@@ -185,7 +193,8 @@ def text(r):
         s = r['legs'][leg]
         if s['n']:
             L.append(f'{leg:>5} knee: {s["n"]} strides, swing flexion {s["swing_peak"]} deg, stance minimum {s["stance_min"]} deg, '
-                     f'range {s["rom"]} deg, stride {s["stride_time"]} s (CV {s["stride_cv"]} %), {s["cadence_steps_min"]} steps/min')
+                     f'range {s["rom"]} deg, stride {s["stride_time"]} s (CV {s["stride_cv"]} %), {s["cadence_steps_min"]} steps/min'
+                     + ('' if leg == 'left' or r.get('right_used') else '  [not used for findings]'))
         else:
             L.append(f'{leg:>5} knee: no clean strides')
     L += ['', 'FINDINGS:'] + ([' - ' + f['text'] for f in r['flags']] or [' - none: within the healthy range at this speed'])
@@ -201,6 +210,7 @@ def main():
     ap.add_argument('--knee-dir', default='~/gait_data/knee_angles')
     ap.add_argument('--out-dir', default='~/gait_data/reports')
     ap.add_argument('--norm', default=NORM)
+    ap.add_argument('--use-right', action='store_true', help='also judge the right knee (off until cam1 sees it, v3.6.1)')
     a = ap.parse_args()
     path = a.csv
     if a.latest or not path:
@@ -210,6 +220,7 @@ def main():
         path = files[-1]
     norm = json.load(open(a.norm))
     cfg = dict(DEFAULTS, **norm.get('thresholds', {}))
+    cfg['use_right'] = cfg['use_right'] or a.use_right
     r = report(path, cfg, norm)
     od = os.path.expanduser(a.out_dir)
     os.makedirs(od, exist_ok=True)

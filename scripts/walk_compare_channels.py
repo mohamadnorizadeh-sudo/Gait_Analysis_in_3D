@@ -141,7 +141,7 @@ def main():
 
     rows = []
     for p0, p1, dd in passes:
-        near = 'R' if dd < 0 else 'L'
+        near = 'R' if dd > 0 else 'L'   # v3.6.1: same rule as train_angle_model.near_legs (was inverted)
         idx = np.where((t >= p0) & (t <= p1))[0]
         for j, s in ((0, 'L'), (1, 'R')):
             pk, _ = find_peaks(F[idx, j], prominence=12, distance=24)

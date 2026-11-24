@@ -5,6 +5,55 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.6.1 - 2026-11-24 - independent review: left PASS is borderline, right knee unobserved; report made research-only
+
+**Independent review** (a separate agent that had not done the work re-ran everything from the packed data;
+`validation/review_20261124/REVIEW.md`, scripts in `validation/review_20261124/scripts/`). What holds: the held-out
+numbers reproduce exactly, there is no train/test leakage, the live per-frame path equals the offline path (max
+difference 0.0 over 2258 frames), and the knee bends confirm the test-walk clock offset independently (47.82 s).
+What does not hold as stated:
+
+- **The left-leg PASS (v3.4.1) is borderline, not robust.** Bias +2.9 (95 % CI +1.4..+4.4) against a 3 deg gate,
+  upper LoA +9.6 (CI 7.0..12.2) against 10; resampling the 4 passes passes all gates only 53 % of the time; a 0.1 s
+  clock shift, a constant offset instead of the drift fit, or a +-0.3 s pairing window each turn it into a FAIL. Pooled
+  leave-one-walk-out CV fails (5.6 / -4.8 / -21..+11). The max-within-window pairing adds about +2 deg of bias, and
+  only about 46 of 78 test strides are scored (low, stiff strides are dropped most often). Read v3.4.1 as
+  "left borderline, right FAIL".
+- **Cross-leg inference.** A model that never sees the scored leg gets a left median error of 3.5-4.6 deg on the test
+  walk, and taking the right leg's features from other moments removes the left PASS in 5 of 5 shifts. In symmetric
+  training gait one leg predicts the other; this would break for a stroke patient.
+- **Correction to v3.5.0.** The right-knee failure is under-observation plus unfamiliar poses, not "inferred from the
+  gait rhythm": cam1's raw right-knee angle never exceeds 27.6 deg in the 90-110 deg knee bends (cam0 sees 100.7), and
+  right-leg labels already reach 110 deg (walk 1). The "trained only up to ~70 deg" limit applies to the left leg.
+- **Correction to v3.4.1's raw baseline.** The quoted raw right-leg bias (-18.5) used the blind camera (cam1). cam0's
+  raw right-knee angle gives median 6.5 deg on the test walk, about the same as the model's 6.2. For the left leg the
+  best raw camera (cam1) gives 7.2 against the model's 2.2, so the left-leg gain is real.
+- **Reference not settled.** MoveNet and YOLOv8x differ by about 14 deg on left swing peaks from the same video. In the
+  static check MoveNet is closer in only 4 of 8 poses (p 0.38); its advantage shows only above 60 deg of shin tilt
+  (n = 3), and no retained pose lies in the 30-60 deg range that matters for walking.
+- **Near/far in older scripts.** `walk_compare_channels.py` and `walk_compare_ref.py` used the opposite near-leg rule
+  to `train_angle_model.near_legs` (the data support the training script). The v3.3.1/v3.3.2 statements about the
+  "iPad's side" and the "far side" were built on those scripts and probably have near and far swapped.
+- Other: the knee angle is unsigned, so hyperextension reads as flexion; the gbm memorises its training data (training
+  error 0.02 deg vs 7.5 in CV); training walks ran at ~10 fps, live with the model at ~8.4 fps; walk 1 has a pass with
+  no visible person that still enters training; the MoveNet cleaning script is not in the repository.
+
+**Changed:**
+- `gait_report.py`: marked RESEARCH PROTOTYPE in its notes; the right knee is reported but left out of findings and
+  suggestions unless `--use-right`; the hyperextension flag is off (`hyperextension_deg=None`) and the notes say why.
+- `walk_compare_channels.py`, `walk_compare_ref.py`: near-leg rule now matches `train_angle_model.near_legs`.
+- Not changed (needs a decision, see the review's recommendations): the `--source L=cam0,R=cam1` fallback in
+  `07_side_session.py` (used only when no model loads) still measures the right knee with the blind camera; the knee
+  CSV still logs both knees as specified, with the right-knee caveat above.
+
+**Next, from the review:** re-aim cam1 (or add a camera) until the raw right-knee angle shows knee bends; per-leg
+models on own-leg features (or desynchronisation augmentation) plus a desync test as a gate; a reference that is not a
+pose model (IMUs or goniometers on both legs, same trousers); asymmetric test walks (locked brace on one leg) with
+styles recorded; independent stride segmentation and repeated-measures Bland-Altman with CIs, gates fixed before
+looking; an out-of-distribution flag and a signed knee angle.
+
+---
+
 ## v3.6.0 - 2026-11-24 - comparison with published healthy-gait datasets; gait report with doctor recommendations
 
 **Validation against other healthy people (plausibility, not accuracy):** knee-flexion cycles from the three walks
