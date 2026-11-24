@@ -5,6 +5,22 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.4.0 - 2026-11-24 - static check: MoveNet is the better iPad reference; training goes back to MoveNet
+
+**Issue:** the two iPad references disagreed by ~15 deg in walking (YOLOv8x lower). **Check:** phone zip-tied to
+the shin as a true shin-angle meter, seated poses from leg extended to foot tucked, each leg twice
+(`validation/static_20261124/`). On 8 still poses, shin error vs the phone: MoveNet mean -1.4 deg (mean |err| 5.8),
+YOLOv8x -5.5 (8.3); with the shin tilted more than 45 deg, MoveNet -8.1 and YOLOv8x -15.8. Knee angle (model thigh
++ phone shin): MoveNet mean |err| 5.8 (max 12.4), YOLOv8x 8.3 (max 18.6). Both see the shin as more vertical than
+it is, which fits loose trousers hanging straight down; YOLOv8x follows the fabric more. This explains its lower
+swing peaks in walking.
+**Decision:** the walking reference is MoveNet (cleaned) again; YOLOv8x results in v3.3.8 are kept for comparison.
+On the Pi, `config/angle_model_interim_movenet.pkl` (already trained on the three walks) should become the default
+`config/angle_model.pkl` next time the Pi is on. MoveNet itself still under-reads large shin tilts by ~8 deg, so
+the remaining bias is a known limit of a video-only reference with loose trousers.
+
+---
+
 ## v3.3.9 - 2026-11-23 (evening) - learned model runs on one thread in the live session
 
 **Issue:** on the Pi, the gbm model took 36.9 ms per frame with the default thread count and 23.6 ms with one thread
