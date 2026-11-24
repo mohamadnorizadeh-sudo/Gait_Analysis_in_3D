@@ -44,8 +44,11 @@ not measured (own-leg max L 60 / R 27 deg where the reference shows 108 / 93), a
 about 55-65 % of strides are within +-5 deg (goal 95 %), 95 % limits about +-12 to +-20 deg. Under the old v3.4.1
 gates the own-leg model fails the left bias gate (+3.1 deg) on the held-out walk.
 
-**Not changed:** the live screen, CSV and report are as in v3.6.1. The Pi keeps its version-2 model as
-`config/angle_model_v2_both.pkl` when retrained with `--features own`.
+**Deployed (24 Nov, afternoon):** v3.7.0 installed on the Pi and the own-leg model trained there (scikit-learn
+1.4.2) into `config/angle_model.pkl`; the version-2 model is kept as `config/angle_model_v2_both.pkl`. Pi-trained
+model, strict: pooled leave-one-walk-out L 4.1 / -2.9 / 58 %, R 4.7 / -1.3 / 54 %; held-out walk L 3.7 / +3.5 / 60 %,
+R 4.1 / +0.5 / 64 %; desync 0.00 deg; 9.5 ms per frame (was 23.6). The live screen, CSV and report are as in v3.6.1;
+the next side recording uses this model.
 
 ---
 

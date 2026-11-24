@@ -25,6 +25,11 @@ signal's own swing peak and stance minimum in the stride; brackets = 95 % CI fro
 1.9.1; with the exact v3.4.1 model the strict test result is L 4.2 / +4.1 / 59 %, R 3.8 / +1.1 / 67 %,
 `both_leg_model_test.log`.)
 
+Deployed: the same command run on the Pi (scikit-learn 1.4.2) on 24 Nov wrote `config/angle_model.pkl` (feature
+version 3; the previous model is kept as `config/angle_model_v2_both.pkl`). Its strict results: pooled leave-one-walk-
+out L 4.1 / -2.9 / 58 %, R 4.7 / -1.3 / 54 %; held-out walk L 3.7 / +3.5 / 60 % (limits -7.6..+14.6), R 4.1 / +0.5 /
+64 % (limits -11.8..+12.7); desync change 0.00 deg; 9.5 ms per frame on one thread (the version-2 model: 23.6 ms).
+
 Chosen: own-leg gbm (300 iterations, learning rate 0.05, at least 60 samples per leaf, L2 1.0, 15 leaves), the
 lowest pooled median error of the own-leg candidates.
 
