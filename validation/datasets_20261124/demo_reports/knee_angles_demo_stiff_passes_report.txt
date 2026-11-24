@@ -1,0 +1,17 @@
+GAIT SUMMARY FOR THE DOCTOR  (knee_angles_demo_stiff_passes.csv, start 2026-11-24 11:32:47.203 Qatar time, 45.8 s)
+
+Compared with healthy adults at 0.69 m/s (stride 1.71 s; swing flexion 62.2 +- 5.5 deg).
+ left knee: 17 strides, swing flexion 28.5 deg, stance minimum 11.6 deg, range 15.4 deg, stride 1.87 s (CV 6.5 %), 64.3 steps/min
+right knee: 1 strides, swing flexion 19.0 deg, stance minimum 7.6 deg, range 11.4 deg, stride 1.0 s (CV 0.0 %), 120.0 steps/min
+
+FINDINGS:
+ - left knee: swing-phase flexion 28.5 deg, below the healthy range at this speed (>= 51 deg): stiff-knee pattern
+ - right knee: only 1 clean stride(s); not enough to judge
+
+SUGGESTIONS (for the clinician to confirm):
+ - Walker speed: reduce by about 15 % so the patient can complete knee flexion in swing; reassess next session.
+ - Projected footprints: show step targets for the left leg slightly ahead of the current step (encourage a full swing), at about 58 steps/min (10 % below the measured cadence) so there is time to bend the knee.
+
+NOTES:
+ - Decision support only: thresholds are defaults until set by the clinical team.
+ - Right-knee values are not reliable with the current camera position (CHANGELOG v3.5.0).

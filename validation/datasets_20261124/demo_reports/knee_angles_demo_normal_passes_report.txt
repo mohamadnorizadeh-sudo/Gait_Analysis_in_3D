@@ -1,0 +1,15 @@
+GAIT SUMMARY FOR THE DOCTOR  (knee_angles_demo_normal_passes.csv, start 2026-11-24 11:31:25.188 Qatar time, 61.9 s)
+
+Compared with healthy adults at 0.42 m/s (stride 2.85 s; swing flexion 57.8 +- 9.8 deg).
+ left knee: 5 strides, swing flexion 50.1 deg, stance minimum 5.2 deg, range 41.8 deg, stride 2.77 s (CV 3.9 %), 43.4 steps/min
+right knee: 7 strides, swing flexion 47.5 deg, stance minimum 4.2 deg, range 42.6 deg, stride 2.87 s (CV 5.2 %), 41.9 steps/min
+
+FINDINGS:
+ - none: within the healthy range at this speed
+
+SUGGESTIONS (for the clinician to confirm):
+ - Walker speed: knee pattern within the healthy range at this speed; keep, or increase by up to 10 % if the clinician agrees.
+
+NOTES:
+ - Decision support only: thresholds are defaults until set by the clinical team.
+ - Right-knee values are not reliable with the current camera position (CHANGELOG v3.5.0).

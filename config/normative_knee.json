@@ -1,0 +1,76 @@
+{
+ "source": "Moreira et al. 2021, Scientific Data, doi 10.1038/s41597-021-00881-3 (16 healthy young adults, overground, controlled speeds); per-participant mean of all strides and both legs",
+ "note": "Default thresholds for decision support only; to be reviewed and set by the clinical team.",
+ "speeds": [
+  {
+   "speed_m_s": 0.28,
+   "n": 16,
+   "stride_time_s": 4.28,
+   "stride_time_sd": 0.05,
+   "swing_peak_deg": 61.7,
+   "swing_peak_sd": 11.2,
+   "stance_min_deg": 7.7,
+   "stance_min_sd": 6.8
+  },
+  {
+   "speed_m_s": 0.42,
+   "n": 16,
+   "stride_time_s": 2.85,
+   "stride_time_sd": 0.04,
+   "swing_peak_deg": 57.8,
+   "swing_peak_sd": 9.8,
+   "stance_min_deg": 6.7,
+   "stance_min_sd": 6.0
+  },
+  {
+   "speed_m_s": 0.56,
+   "n": 16,
+   "stride_time_s": 2.1,
+   "stride_time_sd": 0.03,
+   "swing_peak_deg": 58.6,
+   "swing_peak_sd": 6.1,
+   "stance_min_deg": 5.9,
+   "stance_min_sd": 5.7
+  },
+  {
+   "speed_m_s": 0.69,
+   "n": 16,
+   "stride_time_s": 1.71,
+   "stride_time_sd": 0.03,
+   "swing_peak_deg": 62.2,
+   "swing_peak_sd": 5.5,
+   "stance_min_deg": 5.6,
+   "stance_min_sd": 5.7
+  },
+  {
+   "speed_m_s": 0.83,
+   "n": 16,
+   "stride_time_s": 1.42,
+   "stride_time_sd": 0.03,
+   "swing_peak_deg": 67.4,
+   "swing_peak_sd": 4.0,
+   "stance_min_deg": 6.2,
+   "stance_min_sd": 4.5
+  },
+  {
+   "speed_m_s": 0.97,
+   "n": 15,
+   "stride_time_s": 1.21,
+   "stride_time_sd": 0.02,
+   "swing_peak_deg": 70.4,
+   "swing_peak_sd": 4.0,
+   "stance_min_deg": 6.6,
+   "stance_min_sd": 4.3
+  },
+  {
+   "speed_m_s": 1.11,
+   "n": 15,
+   "stride_time_s": 1.07,
+   "stride_time_sd": 0.02,
+   "swing_peak_deg": 71.1,
+   "swing_peak_sd": 3.8,
+   "stance_min_deg": 6.7,
+   "stance_min_sd": 4.3
+  }
+ ]
+}

@@ -5,6 +5,26 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.6.0 - 2026-11-24 - comparison with published healthy-gait datasets; gait report with doctor recommendations
+
+**Validation against other healthy people (plausibility, not accuracy):** knee-flexion cycles from the three walks
+and the test walk (near-leg passes, strides checked against each pass's repeat period) compared with Moreira et al.
+2021 (16 adults, controlled speeds 0.28-1.11 m/s), Fukuchi et al. 2018 (42 young and older adults, 0.50-1.6 m/s) and
+Helwig et al. 2016 / UCI (10 adults, with and without a knee brace). Our normal passes have a ~2.2 s stride, matching
+Moreira's 0.56 m/s condition (2.10 s). Against it: iPad reference RMSE 5.8 deg, r 0.99, 96 % of the cycle inside the
+healthy +-2 SD band; Pi model left 8.0 deg / 0.98 / 83 %, right 7.1 / 0.98 / 93 %. Stiff-knee passes against the
+knee-brace condition: RMSE 3.6-4.0 deg, 100 % inside the band. Our stance flexion stays ~10 deg higher than healthy
+(walker lean or loose trousers). Files and scripts in `validation/datasets_20261124/`; dataset copies on the laptop.
+
+**New:** `scripts/gait_report.py` (per session: strides, swing flexion, stance minimum, range, stride time and CV,
+speed match by stride time, flags for stiff knee, excess stance flexion, hyperextension, irregular stepping,
+asymmetry; draft recommendations for walker speed and projected footprint targets; JSON + text in
+`~/gait_data/reports/`). `config/normative_knee.json` (Moreira 2021 per-speed values, default thresholds for the
+clinical team to set). `docs/closed_loop_design.md` (doctor in the loop, walker speed control, floor projector:
+design only). Tested on the test walk: normal stretch -> no findings; stiff-knee stretch -> left stiff-knee flag.
+
+---
+
 ## v3.5.0 - 2026-11-24 - per-session knee CSV in Qatar time; right-leg visibility problem found
 
 **Changed:** every side session (`07_side_session.py`, also from the "Start side recording" icon) now also writes
