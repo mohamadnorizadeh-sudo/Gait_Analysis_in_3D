@@ -5,6 +5,27 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.4.1 - 2026-11-24 - held-out test walk; clock sync guards against false knee-bend matches
+
+**Test:** one more walk recorded today with the live model (MoveNet-trained, cameras untouched), never used for
+training (`validation/test_20261124/`). Against the MoveNet iPad reference, swing peaks:
+
+| leg | median abs error | bias | 95 % LoA | gates (<=5 / <=3 / +-10) |
+|---|---|---|---|---|
+| left | 2.2 deg | +2.9 | -3.9..+9.6 | PASS |
+| right | 6.2 deg | -1.7 | -16.8..+13.4 | FAIL (median, LoA) |
+
+Without the model (raw 2D angle from the Pi cameras): right-leg bias -18.5 deg, LoA -47..+10. The reference itself
+under-reads large shin tilts by ~8 deg with loose trousers (v3.4.0), so these numbers are agreement with the best
+available video reference, not with a gait lab.
+
+**Issue fixed:** the knee bends came at 48-57 s, outside the 3-30 s sync window; the knee-bend search still
+passed (r 0.91) at a false offset (-12.6 s) and no walking pass confirmed it, giving a meaningless first result
+(r ~0). `align()` now falls back to the walking match whenever fewer than half the passes confirm the offset
+(here +47.8 s, all passes within 0.25 s).
+
+---
+
 ## v3.4.0 - 2026-11-24 - static check: MoveNet is the better iPad reference; training goes back to MoveNet
 
 **Issue:** the two iPad references disagreed by ~15 deg in walking (YOLOv8x lower). **Check:** phone zip-tied to

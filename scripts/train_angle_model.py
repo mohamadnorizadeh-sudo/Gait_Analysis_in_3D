@@ -69,9 +69,8 @@ def align(tau, P, ref, sync, off_min, off_max, speed):
                 best = (r_, o)
     off = best[1]
     passes = passes_from_ref(t, ref['hip_x'], speed)
-    if best[0] < 0.9 and passes:
-        # v3.3.7: knee bends missed (23 Nov walks 2-3: bends at 27-36 s, start of the iPad video unusable) ->
-        # match the walking itself: every Pi camera/leg angle against the same reference leg over all passes.
+    def walking_match():
+        # v3.3.7: match the walking itself: every Pi camera/leg angle against the same reference leg, all passes.
         w = (-2, off)
         for (c, j), q0 in raw.items():
             Fj = medfilt(ref['flex_L' if j == 0 else 'flex_R'], 5)
@@ -83,24 +82,42 @@ def align(tau, P, ref, sync, off_min, off_max, speed):
                 r_ = np.corrcoef(np.interp(tt[m], t, Fj), q0[m])[0, 1]
                 if r_ > w[0]:
                     w = (r_, o)
+        return w
+
+    def per_pass(off):
+        mids, offs = [], []
+        for p0, p1, _ in passes:
+            m = (tau + off >= p0) & (tau + off <= p1)
+            bb = (-2, off)
+            for (c, j), q0 in raw.items():
+                y = q0[m]
+                ok = ~np.isnan(y) & (y < 75)
+                if ok.sum() < 30:
+                    continue
+                for o in np.arange(off - 1.0, off + 1.0, 0.02):
+                    r_ = np.corrcoef(np.interp(tau[m][ok] + o, t, F[:, j]), y[ok])[0, 1]
+                    if r_ > bb[0]:
+                        bb = (r_, o)
+            if bb[0] > 0.6:
+                mids.append(np.mean(tau[m]))
+                offs.append(bb[1])
+        return mids, offs
+
+    if best[0] < 0.9 and passes:
+        # knee bends missed (23 Nov walks 2-3: bends at 27-36 s, start of the iPad video unusable)
+        w = walking_match()
         print('  clock: knee-bend sync r %.2f too low; walking match r %.2f at offset %.2f s' % (best[0], *w))
         off = w[1]
-    mids, offs = [], []
-    for p0, p1, _ in passes:
-        m = (tau + off >= p0) & (tau + off <= p1)
-        bb = (-2, off)
-        for (c, j), q0 in raw.items():
-            y = q0[m]
-            ok = ~np.isnan(y) & (y < 75)
-            if ok.sum() < 30:
-                continue
-            for o in np.arange(off - 1.0, off + 1.0, 0.02):
-                r_ = np.corrcoef(np.interp(tau[m][ok] + o, t, F[:, j]), y[ok])[0, 1]
-                if r_ > bb[0]:
-                    bb = (r_, o)
-        if bb[0] > 0.6:
-            mids.append(np.mean(tau[m]))
-            offs.append(bb[1])
+    mids, offs = per_pass(off)
+    if passes and len(offs) < len(passes) / 2:
+        # v3.4.1: the knee-bend match passed (r > 0.9) but fewer than half the passes confirm it: a false match
+        # (24 Nov test walk: bends at 48-57 s, outside the window; r 0.91 at -12.6 s, no pass confirmed; the
+        # walking gives +47.8 s, all passes within 0.2 s).
+        w = walking_match()
+        print('  clock: only %d of %d passes confirm offset %.2f s -> walking match r %.2f at %.2f s' % (
+            len(offs), len(passes), off, *w))
+        off = w[1]
+        mids, offs = per_pass(off)
     mids, offs = np.array(mids), np.array(offs)
     keep = np.ones(len(mids), bool)
     drift, b = 0.0, off
