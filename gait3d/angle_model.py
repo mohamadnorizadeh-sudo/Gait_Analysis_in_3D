@@ -1,4 +1,4 @@
-"""Learned knee angle from both cameras' leg keypoints (v3.3.1).
+"""Learned knee angle from both cameras' leg keypoints (v3.3.1; own-leg features v3.7.0).
 
 One feature definition is shared by training (scripts/train_angle_model.py) and the live session
 (scripts/07_side_session.py), so what the model sees live is exactly what it was trained on.
@@ -7,6 +7,13 @@ Features of frame k (FEATURE_VERSION 2, causal: no future frames, so no live del
   for each camera: hip, knee and ankle of both legs relative to the hip midpoint / leg length (12 numbers),
   their 6 confidences and both raw 2D knee angles -> 20 per camera, 40 per frame;
   then the same 40 for frames k-1 and k-2 -> 120.
+
+Own-leg features (FEATURE_VERSION 3, v3.7.0, default for new models): each knee's model sees ONLY its own leg.
+The independent review (validation/review_20261124) showed that with the version-2 features one leg's angle can be
+predicted from the other leg's movement in symmetric walking, which would fail for a stroke patient. Per leg and
+camera: knee and ankle relative to that leg's hip / its own length (4), the leg's 3 confidences, its raw 2D knee
+angle, log of its length in pixels, thigh/shank length ratio and a seen flag -> 11 per camera, 22 per frame, 66 with
+frames k-1 and k-2. A camera that does not see the leg gives zeros with seen = 0 (not stale values).
 """
 from collections import deque
 
@@ -16,7 +23,8 @@ import pickle
 import numpy as np
 
 LEGS = ((11, 13, 15), (12, 14, 16))
-FEATURE_VERSION = 2
+FEATURE_VERSION = 2              # both-leg features (models trained before v3.7.0)
+OWN_FEATURE_VERSION = 3          # own-leg features (v3.7.0)
 CONTEXT = 3                      # frames k, k-1, k-2
 MIN_CONF = 0.3                   # a leg point below this in either camera -> no model value for that frame
 
@@ -69,6 +77,40 @@ def features(P):
     return np.nan_to_num(np.hstack(lag), nan=0.0)
 
 
+def own_frame(P, j):
+    """(N, 2, 17, 3) -> (N, 22) features of leg j only (v3.7.0)."""
+    h, k, a = LEGS[j]
+    out = []
+    for ci in range(2):
+        xy, c = P[:, ci, :, :2], P[:, ci, :, 2]
+        th = np.linalg.norm(xy[:, h] - xy[:, k], axis=1)
+        sh = np.linalg.norm(xy[:, k] - xy[:, a], axis=1)
+        L = th + sh + 1e-6
+        seen = np.all(np.nan_to_num(c[:, [h, k, a]], nan=0.0) >= MIN_CONF, axis=1).astype(float)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            out += [(xy[:, k] - xy[:, h]) / L[:, None], (xy[:, a] - xy[:, h]) / L[:, None], c[:, [h, k, a]],
+                    flex(xy, LEGS[j])[:, None], np.log(L)[:, None], (th / (sh + 1e-6))[:, None], seen[:, None]]
+    X = np.hstack(out)
+    for ci in range(2):
+        X[X[:, ci * 11 + 10] == 0, ci * 11:ci * 11 + 10] = 0.0
+    return np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+
+
+def own_features(P, j):
+    """(N, 2, 17, 3) sequence -> (N, 66): leg j's frame k with k-1 and k-2 (v3.7.0)."""
+    X = own_frame(P, j)
+    lag = [X] + [np.vstack([np.repeat(X[:1], d, 0), X[:-d]]) for d in range(1, CONTEXT)]
+    return np.hstack(lag)
+
+
+def leg_features(P, version):
+    """[X for the left knee, X for the right knee] for a model of this feature version."""
+    if version == OWN_FEATURE_VERSION:
+        return [own_features(P, 0), own_features(P, 1)]
+    X = features(P)
+    return [X, X]
+
+
 def valid(P):
     """(N, 2) bool: both cameras see that leg's hip, knee and ankle with conf >= MIN_CONF."""
     ok = []
@@ -82,34 +124,46 @@ class AngleModel:
     """Loads a model saved by train_angle_model.py; predicts (L, R) frame by frame or for a sequence."""
 
     def __init__(self, path):
+        d = None
         if path.endswith('.json'):
             d = json.load(open(path))
             self.kind, self.ridge = 'ridge', d
         else:
-            d = pickle.load(open(path, 'rb'))
-            self.ridge = d['ridge']
             try:
-                import sklearn  # noqa: F401
-                self.kind, self.gbm = 'gbm', d['gbm']
-                try:   # v3.3.9: one frame at a time is faster on one thread (Pi 5: 23.6 vs 36.9 ms per frame)
-                    from threadpoolctl import threadpool_limits
-                    self._threads = threadpool_limits(limits=1, user_api='openmp')
-                except Exception:
-                    pass
-            except ImportError:
-                self.kind = 'ridge'
-        if d.get('feature_version') != FEATURE_VERSION:
-            raise ValueError(f"model feature_version {d.get('feature_version')} != {FEATURE_VERSION}: retrain")
+                d = pickle.load(open(path, 'rb'))
+            except (ImportError, ModuleNotFoundError, AttributeError) as e:
+                # v3.7.0: scikit-learn missing or a different version -> use the ridge copy saved beside the model
+                # (before, the pickle failed here and the ridge fallback inside it was unreachable)
+                alt = path.replace('.pkl', '_ridge.json')
+                print('angle model: %s (%s); using %s' % (type(e).__name__, e, alt))
+                d = json.load(open(alt))
+                self.kind, self.ridge = 'ridge', d
+            if self.__dict__.get('kind') is None:
+                self.ridge = d['ridge']
+                try:
+                    import sklearn  # noqa: F401
+                    self.kind, self.gbm = 'gbm', d['gbm']
+                    try:   # v3.3.9: one frame at a time is faster on one thread (Pi 5: 23.6 vs 36.9 ms per frame)
+                        from threadpoolctl import threadpool_limits
+                        self._threads = threadpool_limits(limits=1, user_api='openmp')
+                    except Exception:
+                        pass
+                except ImportError:
+                    self.kind = 'ridge'
+        self.version = d.get('feature_version')
+        if self.version not in (FEATURE_VERSION, OWN_FEATURE_VERSION):
+            raise ValueError(f"model feature_version {self.version} unknown: retrain")
         self.buf = deque(maxlen=CONTEXT)
 
-    def predict_features(self, X):
+    def predict_features(self, Xs):
+        """Xs = [X_left, X_right] (leg_features); returns (N, 2)."""
         if self.kind == 'gbm':
-            return np.column_stack([m.predict(X) for m in self.gbm])
-        W, b = np.array(self.ridge['coef'], float), np.array(self.ridge['intercept'], float)
-        return X @ W.T + b
+            return np.column_stack([m.predict(X) for m, X in zip(self.gbm, Xs)])
+        W, b = self.ridge['coef'], self.ridge['intercept']
+        return np.column_stack([X @ np.array(w, float) + float(c) for X, w, c in zip(Xs, W, b)])
 
     def predict_sequence(self, P):
-        Y = self.predict_features(features(P))
+        Y = self.predict_features(leg_features(P, self.version))
         Y[~valid(P)] = np.nan
         return Y
 
@@ -120,6 +174,6 @@ class AngleModel:
         seq = list(self.buf)
         seq = [seq[0]] * (CONTEXT - len(seq)) + seq
         P = np.array(seq)
-        y = self.predict_features(features(P)[-1:])[0]
+        y = self.predict_features([X[-1:] for X in leg_features(P, self.version)])[0]
         ok = valid(P[-1:])[0]
         return tuple(float(np.clip(y[j], -10, 150)) if ok[j] else None for j in range(2))

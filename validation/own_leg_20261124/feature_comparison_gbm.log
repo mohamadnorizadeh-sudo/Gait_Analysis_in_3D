@@ -1,0 +1,31 @@
+=== gbm features=both
+  LOWO w1                L old: n 27 med  3.9 bias  -4.4 LoA  -24.1..+15.3 | strict: 37/38 strides (5 passes) med  3.7 [2.6-4.7] bias  -3.0 [-5.5,-0.1] LoA  -21.2..+15.2 within5  62% stance bias  +3.1 P(old gates) 0.03
+  LOWO w1                R old: n 28 med  6.2 bias  -5.3 LoA  -33.5..+22.9 | strict: 37/44 strides (5 passes) med  5.0 [3.2-7.1] bias  +0.5 [-5.2,+5.0] LoA  -21.0..+22.0 within5  51% stance bias  +6.2 P(old gates) 0.01
+  LOWO w2                L old: n 28 med  7.6 bias  -7.9 LoA  -22.2.. +6.4 | strict: 42/42 strides (6 passes) med  5.1 [3.5-6.6] bias  -4.1 [-6.4,-1.7] LoA  -18.5..+10.3 within5  48% stance bias  +1.6 P(old gates) 0.00
+  LOWO w2                R old: n 24 med  3.1 bias  -2.2 LoA  -13.3.. +8.9 | strict: 32/32 strides (5 passes) med  4.0 [2.5-5.2] bias  -1.3 [-1.9,-0.9] LoA  -14.0..+11.5 within5  69% stance bias  -0.3 P(old gates) 0.07
+  LOWO w3                L old: n 37 med  5.5 bias  -2.8 LoA  -16.5..+10.9 | strict: 48/48 strides (6 passes) med  4.3 [2.3-5.5] bias  -1.8 [-3.0,-0.4] LoA  -12.9.. +9.2 within5  58% stance bias  +2.8 P(old gates) 0.02
+  LOWO w3                R old: n 36 med  5.7 bias  -6.5 LoA  -23.2..+10.2 | strict: 40/49 strides (5 passes) med  5.0 [3.0-5.6] bias  -1.2 [-4.7,+2.1] LoA  -16.0..+13.5 within5  50% stance bias  +4.0 P(old gates) 0.00
+  TEST                   L old: n 23 med  2.2 bias  +2.9 LoA   -3.9.. +9.6 | strict: 29/32 strides (4 passes) med  4.2 [2.5-5.8] bias  +4.1 [+2.7,+6.1] LoA   -5.8..+14.0 within5  59% stance bias  +5.9 P(old gates) 0.00
+  TEST                   R old: n 21 med  6.2 bias  -1.7 LoA  -16.8..+13.4 | strict: 33/35 strides (4 passes) med  3.8 [2.5-4.2] bias  +1.1 [-0.9,+3.1] LoA  -11.3..+13.5 within5  67% stance bias  +2.5 P(old gates) 0.00
+  desync TEST L: med 5.1 7.7 4.8 4.0 4.4 | bias -0.4 +2.4 +1.1 +2.2 +1.3 | within5 45 41 55 55 52
+  desync TEST R: med 6.0 7.4 5.6 4.9 8.2 | bias +3.7 +2.6 +2.8 +2.2 +3.1 | within5 42 45 45 52 33
+=== gbm features=both+validonly
+  LOWO w1                L old: n 27 med  4.0 bias  -4.4 LoA  -25.3..+16.5 | strict: 37/38 strides (5 passes) med  3.5 [2.0-4.6] bias  -2.4 [-5.6,+0.6] LoA  -21.7..+16.9 within5  65% stance bias  +3.2 P(old gates) 0.05
+  LOWO w1                R old: n 28 med  7.1 bias  -4.9 LoA  -32.2..+22.3 | strict: 37/44 strides (5 passes) med  4.2 [2.6-7.2] bias  +0.5 [-5.4,+5.2] LoA  -20.7..+21.8 within5  57% stance bias  +5.6 P(old gates) 0.01
+  LOWO w2                L old: n 28 med  9.4 bias  -8.2 LoA  -21.5.. +5.2 | strict: 42/42 strides (6 passes) med  4.6 [3.9-5.7] bias  -4.2 [-6.4,-2.2] LoA  -18.4..+10.1 within5  57% stance bias  +1.5 P(old gates) 0.00
+  LOWO w2                R old: n 24 med  4.0 bias  -1.2 LoA  -15.2..+12.8 | strict: 32/32 strides (5 passes) med  4.6 [3.2-8.4] bias  -1.5 [-3.3,+0.3] LoA  -16.0..+12.9 within5  56% stance bias  -0.2 P(old gates) 0.02
+  LOWO w3                L old: n 37 med  5.6 bias  -3.7 LoA  -16.9.. +9.6 | strict: 48/48 strides (6 passes) med  4.0 [3.3-5.5] bias  -2.3 [-3.5,-1.1] LoA  -12.8.. +8.1 within5  60% stance bias  +3.0 P(old gates) 0.05
+  LOWO w3                R old: n 36 med  5.9 bias  -4.9 LoA  -21.7..+11.9 | strict: 40/49 strides (5 passes) med  5.8 [2.0-8.1] bias  -1.0 [-6.0,+3.6] LoA  -18.5..+16.4 within5  48% stance bias  +3.9 P(old gates) 0.00
+  TEST                   L old: n 23 med  2.7 bias  +3.0 LoA   -6.0..+12.0 | strict: 29/32 strides (4 passes) med  3.7 [2.5-6.5] bias  +4.2 [+2.4,+7.1] LoA   -6.7..+15.2 within5  55% stance bias  +5.2 P(old gates) 0.00
+  TEST                   R old: n 21 med  6.8 bias  -1.8 LoA  -14.8..+11.1 | strict: 33/35 strides (4 passes) med  5.0 [3.7-7.1] bias  +1.1 [-0.1,+2.4] LoA  -11.5..+13.8 within5  52% stance bias  +2.9 P(old gates) 0.00
+=== gbm features=own+validonly
+  LOWO w1                L old: n 27 med  3.8 bias  -3.3 LoA  -24.1..+17.5 | strict: 37/38 strides (5 passes) med  4.1 [2.9-4.4] bias  -1.4 [-3.5,+0.0] LoA  -20.7..+17.9 within5  65% stance bias  +2.8 P(old gates) 0.02
+  LOWO w1                R old: n 28 med  6.2 bias  -5.5 LoA  -36.2..+25.1 | strict: 37/44 strides (5 passes) med  3.3 [1.9-7.2] bias  +0.5 [-5.9,+5.4] LoA  -23.4..+24.3 within5  62% stance bias  +6.9 P(old gates) 0.00
+  LOWO w2                L old: n 28 med  9.9 bias  -9.8 LoA  -24.0.. +4.4 | strict: 42/42 strides (6 passes) med  5.9 [4.5-7.7] bias  -4.2 [-6.7,-1.9] LoA  -21.2..+12.7 within5  48% stance bias  +2.3 P(old gates) 0.00
+  LOWO w2                R old: n 24 med  3.9 bias  -3.2 LoA  -14.9.. +8.5 | strict: 32/32 strides (5 passes) med  5.5 [2.4-6.7] bias  -3.2 [-6.2,-0.7] LoA  -15.8.. +9.3 within5  47% stance bias  -0.5 P(old gates) 0.01
+  LOWO w3                L old: n 37 med  5.0 bias  -4.0 LoA  -19.3..+11.3 | strict: 48/48 strides (6 passes) med  4.1 [3.3-5.8] bias  -2.2 [-3.9,-0.6] LoA  -13.4.. +8.9 within5  65% stance bias  +3.2 P(old gates) 0.03
+  LOWO w3                R old: n 36 med  3.9 bias  -3.9 LoA  -16.8.. +8.9 | strict: 40/49 strides (5 passes) med  4.9 [2.5-7.3] bias  +0.5 [-3.8,+4.3] LoA  -14.6..+15.7 within5  52% stance bias  +3.2 P(old gates) 0.01
+  TEST                   L old: n 23 med  4.3 bias  +3.5 LoA   -5.0..+12.0 | strict: 29/32 strides (4 passes) med  4.4 [3.5-7.0] bias  +4.6 [+2.3,+7.0] LoA   -7.3..+16.4 within5  55% stance bias  +6.0 P(old gates) 0.00
+  TEST                   R old: n 21 med  6.6 bias  -0.2 LoA  -16.8..+16.5 | strict: 33/35 strides (4 passes) med  4.2 [3.5-6.6] bias  +1.9 [+0.1,+4.3] LoA  -10.6..+14.4 within5  61% stance bias  +2.8 P(old gates) 0.02
+  desync TEST L: med 4.4 4.4 4.4 4.4 4.4 | bias +4.6 +4.6 +4.6 +4.6 +4.6 | within5 55 55 55 55 55
+  desync TEST R: med 4.2 4.2 4.2 4.2 4.2 | bias +1.9 +1.9 +1.9 +1.9 +1.9 | within5 61 61 61 61 61

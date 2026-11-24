@@ -1,0 +1,30 @@
+cross-validation, gbm, own-leg features (leave one session out):
+  gbm      L  frames r 0.76 RMSE  8.4 | swing peaks n  27: ref 50.5, model 49.6, |err| median  4.2, bias -3.5, 95% LoA -24.5..+17.5
+  gbm      R  frames r 0.85 RMSE 12.0 | swing peaks n  28: ref 55.5, model 56.4, |err| median  5.1, bias -7.9, 95% LoA -44.8..+29.0
+  gbm      L  frames r 0.82 RMSE  7.1 | swing peaks n  28: ref 48.5, model 38.2, |err| median  9.6, bias -9.3, 95% LoA -23.2.. +4.6
+  gbm      R  frames r 0.86 RMSE  8.4 | swing peaks n  24: ref 55.3, model 49.2, |err| median  4.7, bias -4.4, 95% LoA -18.0.. +9.3
+  gbm      L  frames r 0.80 RMSE  7.4 | swing peaks n  37: ref 36.7, model 29.8, |err| median  4.0, bias -3.9, 95% LoA -18.4..+10.7
+  gbm      R  frames r 0.80 RMSE  7.4 | swing peaks n  36: ref 33.9, model 26.8, |err| median  3.1, bias -4.0, 95% LoA -19.7..+11.6
+  pooled   L  STRICT 127/128 strides, 17 passes: |peak err| median 4.0 [3.2-5.2], bias -2.9 [-4.2, -1.8], 95% limits -18.8..+12.9, within +-5 deg 54% [46-63] (goal 95%), stance-min bias +2.7
+  pooled   R  STRICT 109/125 strides, 15 passes: |peak err| median 4.4 [3.5-5.7], bias -1.2 [-4.5, +1.4], 95% limits -21.0..+18.6, within +-5 deg 59% [46-71] (goal 95%), stance-min bias +3.5
+cross-validation, ridge, own-leg features (leave one session out):
+  ridge    L  frames r 0.78 RMSE  7.8 | swing peaks n  27: ref 50.5, model 47.1, |err| median  3.9, bias -4.4, 95% LoA -21.1..+12.2
+  ridge    R  frames r 0.91 RMSE 10.0 | swing peaks n  28: ref 55.5, model 52.8, |err| median  6.1, bias -3.7, 95% LoA -22.2..+14.9
+  ridge    L  frames r 0.84 RMSE  6.9 | swing peaks n  28: ref 48.5, model 40.3, |err| median 12.6, bias -10.3, 95% LoA -22.4.. +1.8
+  ridge    R  frames r 0.87 RMSE  8.3 | swing peaks n  24: ref 55.3, model 46.4, |err| median  5.7, bias -6.8, 95% LoA -22.5.. +8.9
+  ridge    L  frames r 0.78 RMSE  7.7 | swing peaks n  37: ref 36.7, model 31.1, |err| median  5.4, bias -3.6, 95% LoA -15.3.. +8.1
+  ridge    R  frames r 0.79 RMSE  7.4 | swing peaks n  36: ref 33.9, model 25.4, |err| median  4.8, bias -7.3, 95% LoA -24.9..+10.3
+  pooled   L  STRICT 127/128 strides, 17 passes: |peak err| median 4.0 [3.1-5.7], bias -3.4 [-4.9, -2.1], 95% limits -17.8..+10.9, within +-5 deg 54% [45-63] (goal 95%), stance-min bias +2.5
+  pooled   R  STRICT 109/125 strides, 15 passes: |peak err| median 4.9 [3.8-6.5], bias -2.0 [-5.0, +0.6], 95% limits -18.9..+14.9, within +-5 deg 51% [39-62] (goal 95%), stance-min bias +2.1
+saved <decoded>/m_own.pkl and <decoded>/m_own_ridge.json (feature version 3, trained on 2457 / 2149 frames (L / R) from 3 sessions)
+HELD-OUT TEST (gbm model, gates: median |peak err| <= 5, |bias| <= 3, 95% LoA within +-10 deg):
+  model    L  frames r 0.81 RMSE  7.8 | swing peaks n  23: ref 39.0, model 43.5, |err| median  3.3, bias +3.1, 95% LoA  -5.5..+11.6  -> FAIL
+  model    R  frames r 0.87 RMSE  7.4 | swing peaks n  21: ref 44.1, model 45.9, |err| median  7.3, bias -1.5, 95% LoA -20.1..+17.2  -> FAIL
+  raw 2D   L  frames r 0.54 RMSE 11.4 | swing peaks n  24: ref 38.8, model 37.4, |err| median 10.0, bias +1.2, 95% LoA -24.5..+26.8
+  raw 2D   R  frames r 0.11 RMSE 14.7 | swing peaks n  22: ref 43.9, model 22.2, |err| median 19.3, bias -18.5, 95% LoA -47.3..+10.3
+  model    L  STRICT 29/32 strides, 4 passes: |peak err| median 3.4 [2.9-5.4], bias +3.8 [+2.0, +5.3], 95% limits -7.4..+14.9, within +-5 deg 62% [40-78] (goal 95%), stance-min bias +6.8
+  model    R  STRICT 33/35 strides, 4 passes: |peak err| median 3.8 [3.6-5.7], bias +0.3 [-2.4, +2.6], 95% limits -11.3..+11.9, within +-5 deg 64% [50-69] (goal 95%), stance-min bias +3.1
+  DESYNC test (other leg from other walking moments, 5 shifts): mean |change| of each knee's angle inside passes
+    L: 0.00 0.00 0.00 0.00 0.00 deg -> unaffected
+    R: 0.00 0.00 0.00 0.00 0.00 deg -> unaffected
+RESULT: FAIL (see above)

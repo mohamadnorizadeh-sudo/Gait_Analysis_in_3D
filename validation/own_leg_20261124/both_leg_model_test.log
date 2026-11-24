@@ -1,0 +1,11 @@
+HELD-OUT TEST (gbm model, gates: median |peak err| <= 5, |bias| <= 3, 95% LoA within +-10 deg):
+  model    L  frames r 0.82 RMSE  7.6 | swing peaks n  23: ref 39.0, model 44.9, |err| median  2.2, bias +2.9, 95% LoA  -3.9.. +9.6  -> PASS
+  model    R  frames r 0.89 RMSE  6.5 | swing peaks n  21: ref 44.1, model 46.9, |err| median  6.2, bias -1.7, 95% LoA -16.8..+13.4  -> FAIL
+  raw 2D   L  frames r 0.54 RMSE 11.4 | swing peaks n  24: ref 38.8, model 37.4, |err| median 10.0, bias +1.2, 95% LoA -24.5..+26.8
+  raw 2D   R  frames r 0.11 RMSE 14.7 | swing peaks n  22: ref 43.9, model 22.2, |err| median 19.3, bias -18.5, 95% LoA -47.3..+10.3
+  model    L  STRICT 29/32 strides, 4 passes: |peak err| median 4.2 [2.5-5.8], bias +4.1 [+2.7, +6.1], 95% limits -5.8..+14.0, within +-5 deg 59% [32-77] (goal 95%), stance-min bias +5.9
+  model    R  STRICT 33/35 strides, 4 passes: |peak err| median 3.8 [2.5-4.2], bias +1.1 [-0.9, +3.1], 95% limits -11.3..+13.5, within +-5 deg 67% [62-69] (goal 95%), stance-min bias +2.5
+  DESYNC test (other leg from other walking moments, 5 shifts): mean |change| of each knee's angle inside passes
+    L: 4.59 4.67 4.51 4.65 4.75 deg -> DEPENDS ON THE OTHER LEG
+    R: 4.22 4.28 4.35 4.60 4.62 deg -> DEPENDS ON THE OTHER LEG
+RESULT: FAIL (see above)

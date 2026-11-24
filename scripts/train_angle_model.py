@@ -20,6 +20,18 @@ Features: gait3d/angle_model.py (shared with the live session, so training and l
 
 Pass gates (fixed before testing): median |swing-peak error| <= 5 deg, |bias| <= 3 deg, 95 % limits of
 agreement within +-10 deg, per leg on the test walk.
+
+v3.7.0 (after the independent review, validation/review_20261124):
+  --features own (default): each knee's model sees only its own leg (gait3d/angle_model.py, FEATURE_VERSION 3), so
+      it cannot copy the other leg's movement; --features both = the version-2 features.
+  Training uses only frames where both cameras see that leg (--all-frames = old behaviour).
+  STRICT scoring, printed next to the old one and fixed before any new test walk: strides are cut on the reference
+      alone (between knee-flexion minima, 0.7-3.5 s, near-leg passes), each signal's own peak and own minimum in the
+      stride, a stride counts when the model has values for >= 80 % of it; reported: strides scored / found, median
+      |peak error|, bias, 95 % limits, share of strides within +-5 deg, stance-minimum bias, with 95 % confidence
+      intervals from resampling whole passes. Goal: 95 % of strides within +-5 deg.
+  DESYNC test (--test): the other leg's points are replaced by points from other walking moments; a model that
+      measures the leg must not change (own-leg models are unaffected by construction).
 """
 import argparse
 import os
@@ -31,7 +43,8 @@ from scipy.signal import find_peaks, medfilt
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from gait3d.angle_model import FEATURE_VERSION, LEGS, AngleModel, features, flex, frame_points, valid  # noqa: E402
+from gait3d.angle_model import (FEATURE_VERSION, LEGS, OWN_FEATURE_VERSION, AngleModel, flex, frame_points,  # noqa: E402
+                                leg_features, valid)
 from walk_compare_channels import passes_from_ref  # noqa: E402
 
 
@@ -152,8 +165,9 @@ def prepare(rec, refp, a):
     if getattr(a, 'labels', 'near') == 'near':
         for i in range(len(passes)):
             Yt[grp == i, 1 - near[i]] = np.nan
-    return dict(P=P, X=features(P), V=valid(P), Y=Y, Yt=Yt, grp=grp, tr=tr, F=F, t=t, passes=passes, raw=raw,
-                near=near, labels=getattr(a, 'labels', 'near'))
+    version = OWN_FEATURE_VERSION if getattr(a, 'features', 'own') == 'own' else FEATURE_VERSION
+    return dict(P=P, Xs=leg_features(P, version), V=valid(P), Y=Y, Yt=Yt, grp=grp, tr=tr, F=F, t=t, passes=passes,
+                raw=raw, near=near, labels=getattr(a, 'labels', 'near'))
 
 
 def near_legs(t, F, passes):
@@ -223,23 +237,117 @@ def by_style(pred, s, styles):
         print('  note: %d styles given for %d passes found' % (len(styles), len(s['passes'])))
 
 
-def fit(Xa, Ya, kind):
+def fit(Xs, Ya, kind, version=OWN_FEATURE_VERSION):
+    """Xs = [X for L, X for R] (rows already selected); Ya = (N, 2) labels, NaN = not used for that leg."""
     from sklearn.ensemble import HistGradientBoostingRegressor
     from sklearn.linear_model import Ridge
-    # 800 x 0.1: on the 13:01 walk slightly better swing peaks than 300 x 0.05 (R peak bias -5.1 vs -5.2, median
-    # |peak err| 7.4 vs 8.0); weighting high angles did not help (v3.3.1 comparison)
-    mk = {'gbm': lambda: HistGradientBoostingRegressor(max_iter=800, learning_rate=0.1), 'ridge': lambda: Ridge(1.0)}
+    # both-leg features: 800 x 0.1 (v3.3.1). Own-leg features (v3.7.0): smaller, regularised trees, chosen on pooled
+    # leave-one-walk-out strict scoring of the three 23 Nov walks (median |peak err| L 4.0 / R 4.4 vs 4.5 / 4.8 for
+    # 800 x 0.1); the 800 x 0.1 model fitted its training data to 0.02 deg (review finding m5).
+    if version == OWN_FEATURE_VERSION:
+        g = lambda: HistGradientBoostingRegressor(max_iter=300, learning_rate=0.05, min_samples_leaf=60,
+                                                  l2_regularization=1.0, max_leaf_nodes=15)
+    else:
+        g = lambda: HistGradientBoostingRegressor(max_iter=800, learning_rate=0.1)
+    mk = {'gbm': g, 'ridge': lambda: Ridge(1.0)}
     out = []
     for j in range(2):
-        ok = ~np.isnan(Ya[:, j])      # v3.3.6: far-leg labels are NaN with --labels near
-        out.append(mk[kind]().fit(Xa[ok], Ya[ok, j]))
+        ok = ~np.isnan(Ya[:, j])      # v3.3.6: far-leg labels are NaN with --labels near; v3.7.0: unseen frames too
+        out.append(mk[kind]().fit(Xs[j][ok], Ya[ok, j]))
     return out
 
 
-def predict(models, X, V):
-    Y = np.column_stack([m.predict(X) for m in models])
+def predict(models, Xs, V):
+    Y = np.column_stack([m.predict(X) for m, X in zip(models, Xs)])
     Y[~V] = np.nan
     return Y
+
+
+def train_rows(q, a):
+    """Rows of a session used for training and their labels (unseen frames' labels set to NaN unless --all-frames)."""
+    m = q['grp'] >= 0
+    Y = q['Yt'][m].copy()
+    if not getattr(a, 'all_frames', False):
+        Y[~q['V'][m]] = np.nan
+    return [X[m] for X in q['Xs']], Y
+
+
+def stack_rows(sessions, a):
+    parts = [train_rows(q, a) for q in sessions]
+    return [np.vstack([p[0][j] for p in parts]) for j in range(2)], np.vstack([p[1] for p in parts])
+
+
+def strict_strides(pred, s, j, min_valid=0.8):
+    """v3.7.0 strict scoring: strides cut on the reference alone. Rows (pass, ref_peak, model_peak, ref_min,
+    model_min, scored)."""
+    t, F, tr = s['t'], s['F'], s['tr']
+    rows = []
+    for i, (p0, p1, _) in enumerate(s['passes']):
+        if s.get('labels') == 'near' and s['near'][i] != j:
+            continue
+        ii = np.where((t >= p0) & (t <= p1))[0]
+        f = F[ii, j]
+        mins = find_peaks(-f, distance=18, prominence=4)[0]
+        for m0, m1 in zip(mins[:-1], mins[1:]):
+            if not 0.7 <= t[ii[m1]] - t[ii[m0]] <= 3.5:
+                continue
+            seg = f[m0:m1 + 1]
+            q = pred[(tr >= t[ii[m0]]) & (tr <= t[ii[m1]]), j]
+            ok = len(q) >= 5 and np.mean(~np.isnan(q)) >= min_valid
+            rows.append((i, seg.max(), np.nanmax(q) if ok else np.nan, seg.min(), np.nanmin(q) if ok else np.nan,
+                         float(ok)))
+    return np.array(rows) if rows else np.zeros((0, 6))
+
+
+def strict_report(name, rows_by_leg, nboot=2000, seed=0):
+    """rows_by_leg: {0: rows, 1: rows}, rows with a 7th column = pass key (unique across walks)."""
+    rng = np.random.default_rng(seed)
+    st = lambda d: (np.median(np.abs(d)), d.mean(), d.mean() - 1.96 * d.std(ddof=1), d.mean() + 1.96 * d.std(ddof=1),
+                    100 * np.mean(np.abs(d) <= 5))
+    res = {}
+    for j, leg in ((0, 'L'), (1, 'R')):
+        R = rows_by_leg[j]
+        sc = R[R[:, 5] == 1]
+        if len(sc) < 3:
+            print('  %-8s %s  strict: too few strides (%d)' % (name, leg, len(sc)))
+            continue
+        d, ds, key = sc[:, 2] - sc[:, 1], sc[:, 4] - sc[:, 3], sc[:, 6]
+        base, u = st(d), np.unique(key)
+        B = np.array([st(np.concatenate([d[key == k] for k in rng.choice(u, len(u))])) for _ in range(nboot)])
+        ci = np.percentile(B, [2.5, 97.5], axis=0)
+        print('  %-8s %s  STRICT %d/%d strides, %d passes: |peak err| median %.1f [%.1f-%.1f], bias %+.1f [%+.1f, %+.1f], '
+              '95%% limits %+.1f..%+.1f, within +-5 deg %.0f%% [%.0f-%.0f] (goal 95%%), stance-min bias %+.1f' % (
+                  name, leg, len(sc), len(R), len(u), base[0], ci[0, 0], ci[1, 0], base[1], ci[0, 1], ci[1, 1],
+                  base[2], base[3], base[4], ci[0, 4], ci[1, 4], ds.mean()))
+        res[leg] = base
+    return res
+
+
+def strict_rows(pred, s, key0=0):
+    out = {}
+    for j in range(2):
+        r = strict_strides(pred, s, j)
+        out[j] = np.column_stack([r, key0 + r[:, 0]]) if len(r) else np.zeros((0, 7))
+    return out
+
+
+def desync_test(model, s, shifts=(37, 83, 151, 211, 307)):
+    """Other leg's points (both cameras) taken from other walking frames; prints the change in each leg's score."""
+    inpass = np.where(s['grp'] >= 0)[0]
+    base = model.predict_sequence(s['P'])
+    print('  DESYNC test (other leg from other walking moments, %d shifts): mean |change| of each knee\'s angle '
+          'inside passes' % len(shifts))
+    for j, leg in ((0, 'L'), (1, 'R')):
+        other = list(LEGS[1 - j])
+        ch = []
+        for sh in shifts:
+            P2 = s['P'].copy()
+            donor = np.roll(inpass, sh)
+            P2[np.ix_(inpass, [0, 1], other, [0, 1, 2])] = s['P'][np.ix_(donor, [0, 1], other, [0, 1, 2])]
+            p = model.predict_sequence(P2)[inpass, j]
+            ch.append(np.nanmean(np.abs(p - base[inpass, j])))
+        print('    %s: %s deg -> %s' % (leg, ' '.join('%.2f' % c for c in ch),
+                                       'unaffected' if max(ch) < 0.05 else 'DEPENDS ON THE OTHER LEG'))
 
 
 def main():
@@ -256,39 +364,49 @@ def main():
     ap.add_argument('--out', default='config/angle_model.pkl')
     ap.add_argument('--labels', default='near', choices=['near', 'both'],
                     help='v3.3.6: near = per pass, learn and score only the leg nearer the reference camera')
+    ap.add_argument('--features', default='own', choices=['own', 'both'],
+                    help='v3.7.0: own = each knee from its own leg only (default); both = version-2 features')
+    ap.add_argument('--all-frames', action='store_true', help='also train on frames where a camera misses the leg')
     a = ap.parse_args()
     gates = tuple(map(float, a.gates.split(',')))
 
     S = [prepare(rec, refp, a) for rec, refp in a.session]
+    version = OWN_FEATURE_VERSION if a.features == 'own' else FEATURE_VERSION
     if S and not a.load:
         for kind in ('gbm', 'ridge'):
-            print('cross-validation, %s (%s):' % (kind, 'leave one session out' if len(S) > 1 else 'leave one pass out'))
+            print('cross-validation, %s, %s-leg features (%s):' % (
+                kind, a.features, 'leave one session out' if len(S) > 1 else 'leave one pass out'))
+            pooled = {0: [], 1: []}
             for si, s in enumerate(S):
                 pred = np.full_like(s['Y'], np.nan)
                 folds = [None] if len(S) > 1 else sorted(set(s['grp'][s['grp'] >= 0]))
                 for f in folds:
                     if f is None:
-                        Xtr = np.vstack([q['X'][q['grp'] >= 0] for k, q in enumerate(S) if k != si])
-                        Ytr = np.vstack([q['Yt'][q['grp'] >= 0] for k, q in enumerate(S) if k != si])
-                        te = np.ones(len(s['X']), bool)
+                        Xtr, Ytr = stack_rows([q for k, q in enumerate(S) if k != si], a)
+                        te = np.ones(len(s['P']), bool)
                     else:
-                        tr_ = (s['grp'] >= 0) & (s['grp'] != f)
-                        Xtr, Ytr, te = s['X'][tr_], s['Yt'][tr_], s['grp'] == f
-                    ms = fit(Xtr, Ytr, kind)
-                    pred[te] = predict(ms, s['X'][te], s['V'][te])
+                        keep = dict(s, grp=np.where(s['grp'] != f, s['grp'], -1))
+                        Xtr, Ytr = train_rows(keep, a)
+                        te = s['grp'] == f
+                    ms = fit(Xtr, Ytr, kind, version)
+                    pred[te] = predict(ms, [X[te] for X in s['Xs']], s['V'][te])
                 agreement(kind, pred, s)
-        Xa = np.vstack([q['X'][q['grp'] >= 0] for q in S])
-        Ya = np.vstack([q['Yt'][q['grp'] >= 0] for q in S])
-        gbm, ridge = fit(Xa, Ya, 'gbm'), fit(Xa, Ya, 'ridge')
+                r = strict_rows(pred, s, key0=1000 * si)
+                for j in range(2):
+                    pooled[j].append(r[j])
+            strict_report('pooled', {j: np.vstack(pooled[j]) for j in range(2)})
+        Xa, Ya = stack_rows(S, a)
+        gbm, ridge = fit(Xa, Ya, 'gbm', version), fit(Xa, Ya, 'ridge', version)
         rj = {'coef': [m.coef_.tolist() for m in ridge], 'intercept': [float(m.intercept_) for m in ridge]}
         with open(a.out, 'wb') as fh:
-            pickle.dump({'feature_version': FEATURE_VERSION, 'gbm': gbm, 'ridge': rj,
+            pickle.dump({'feature_version': version, 'gbm': gbm, 'ridge': rj,
                          'sessions': [x[0] for x in a.session]}, fh)
         import json
         with open(a.out.replace('.pkl', '_ridge.json'), 'w') as fh:
-            json.dump({'feature_version': FEATURE_VERSION, **rj}, fh)
-        print('saved %s and %s (trained on %d frames from %d sessions)' % (a.out, a.out.replace('.pkl', '_ridge.json'),
-                                                                         len(Xa), len(S)))
+            json.dump({'feature_version': version, **rj}, fh)
+        print('saved %s and %s (feature version %d, trained on %d / %d frames (L / R) from %d sessions)' % (
+            a.out, a.out.replace('.pkl', '_ridge.json'), version, (~np.isnan(Ya[:, 0])).sum(),
+            (~np.isnan(Ya[:, 1])).sum(), len(S)))
     if a.test:
         model = AngleModel(a.load or a.out)
         T = prepare(a.test[0], a.test[1], a)
@@ -297,6 +415,8 @@ def main():
             model.kind, *gates))
         ok = agreement('model', pred, T, gates)
         agreement('raw 2D', T['raw'], T)
+        strict_report('model', strict_rows(pred, T))
+        desync_test(model, T)
         if a.styles:
             by_style(pred, T, a.styles.split(','))
         np.savetxt(os.path.join(a.test[0], 'model_test_pred.csv'),

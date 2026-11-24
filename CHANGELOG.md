@@ -5,6 +5,50 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.7.0 - 2026-11-24 - each knee measured from its own leg only; strict scoring and desync test
+
+**What was wrong (independent review, v3.6.1, finding C1):** the version-2 features give each knee's model both
+legs' points, so in symmetric walking a knee can be predicted from the other leg's movement. Checked here with a
+desync test on the held-out walk: replacing the other leg's points with points from other walking moments changes the
+deployed-type model's knee angles by 4.5-4.8 deg (L) and 4.2-4.6 deg (R) on average. For a stroke patient, whose legs
+do not move alike, that coupling would give wrong values. The review also found that the swing-peak scoring flattered
+the model (max within +-0.2 s of the reference peak; only about 60 % of strides scored, stiff ones dropped most).
+
+**Changed:**
+- `gait3d/angle_model.py`: own-leg features (FEATURE_VERSION 3): per leg and camera, knee and ankle relative to that
+  leg's hip / its own length, its 3 confidences, raw 2D angle, log length, thigh/shank ratio, a seen flag (unseen
+  camera -> zeros, not stale values); 66 numbers with 2 earlier frames. `AngleModel` loads both versions; if the
+  pickle cannot be loaded (scikit-learn missing or a different version) it now falls back to the `_ridge.json` saved
+  beside it (before, that fallback was unreachable).
+- `scripts/train_angle_model.py`: `--features own` (default; `both` = version 2); trains only on frames where both
+  cameras see the leg (`--all-frames` = old); own-leg gbm regularised (300 x 0.05, min 60 per leaf, L2 1.0, 15
+  leaves), chosen on pooled leave-one-walk-out of the training walks; STRICT scoring printed next to the old gates
+  (strides cut on the reference alone, each signal's own peak and minimum per stride, strides scored / found, pass-
+  resampled 95 % CIs, share within +-5 deg, stance-minimum bias); DESYNC test in `--test` mode.
+- `scripts/ref_clean.py` (new): the MoveNet reference cleaning used since v3.3.7, now in the repository (any leg
+  conf < 0.3 or any knee > 110 deg -> frame filled in by frame-number interpolation, conf 0); reproduces the
+  committed `test_ref_ipad_movenet_clean.csv` exactly.
+- `docs/closed_loop_design.md`: flags list matches v3.6.1.
+
+**Result** (`validation/own_leg_20261124/`; strict scoring; model chosen on the training walks, then the held-out
+walk scored once, though that walk was already used in v3.4.1 and by the review):
+
+| | pooled leave-one-walk-out L / R: median, bias, within +-5 | held-out walk L / R |
+|---|---|---|
+| both-leg (v3.4.1 type) | 4.2, -2.9, 61 % / 4.7, -0.6, 53 % | 4.2, +4.1, 59 % / 3.8, +1.1, 67 % |
+| own-leg (v3.7.0) | 4.0, -2.9, 54 % / 4.4, -1.2, 59 % | 3.4, +3.8, 62 % / 3.8, +0.3, 64 % |
+
+Own-leg desync change: 0.00 deg on both knees. Removing the shortcut costs about 0-0.5 deg of median error. Under
+strict scoring the right knee is about as good as the left in walking (cam0 sees it), but deep knee bends are still
+not measured (own-leg max L 60 / R 27 deg where the reference shows 108 / 93), and neither knee reaches the goal:
+about 55-65 % of strides are within +-5 deg (goal 95 %), 95 % limits about +-12 to +-20 deg. Under the old v3.4.1
+gates the own-leg model fails the left bias gate (+3.1 deg) on the held-out walk.
+
+**Not changed:** the live screen, CSV and report are as in v3.6.1. The Pi keeps its version-2 model as
+`config/angle_model_v2_both.pkl` when retrained with `--features own`.
+
+---
+
 ## v3.6.1 - 2026-11-24 - independent review: left PASS is borderline, right knee unobserved; report made research-only
 
 **Independent review** (a separate agent that had not done the work re-ran everything from the packed data;
