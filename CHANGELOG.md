@@ -5,6 +5,25 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.7.1 - 2026-11-24 - deep comparison with 5 published healthy-gait datasets; validation presentation
+
+**Why:** the user asked how far the walker's knee curves are from published healthy data, whether that is within the
+normal tolerance, and for more datasets.
+
+**Added:** `validation/datasets_deep_20261124/` (README, results.json, figures f1-f8, scripts). Two more datasets from
+the open pyCGM2 normative files: Schwartz et al. 2008 (83 children/teenagers, 5 speeds incl. very slow) and Pinzone et
+al. 2014 (two gait labs), now 263 healthy people in 5 datasets. Our cycles use the v3.7.0 own-leg model. New
+tolerance benchmarks: each healthy person's curve gap to their own group (median 4.9-6.3 deg, 90th percentile 8.0-9.5)
+and lab-to-lab gaps (median 5.9, 90th percentile 9.1).
+
+**Result:** same shape everywhere (r 0.97-0.99). Curve gap to slow healthy walking: iPad 6.0-6.4 deg (62nd-69th
+percentile of healthy people: inside the normal range), Pi right 8.3-8.7 (81st-94th: upper edge), Pi left 9.0-9.2
+(86th-100th: at or past the edge; its swing peak reads about 6 deg low). Stance minimum 5-8 deg above healthy for all
+three. Stiff-knee strides told apart from normal with AUC 0.97-0.99; stiff curves 3.4-4.0 deg from knee-brace data.
+Still plausibility only: accuracy needs a same-person reference.
+
+---
+
 ## v3.7.0 - 2026-11-24 - each knee measured from its own leg only; strict scoring and desync test
 
 **What was wrong (independent review, v3.6.1, finding C1):** the version-2 features give each knee's model both
