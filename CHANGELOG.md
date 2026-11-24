@@ -5,6 +5,26 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.7.2 - 2026-11-24 - Van Criekinge 2023 (healthy + 50 stroke survivors) and Lencioni 2019 added
+
+**Why:** the user approved adding these two datasets and asked for the analysis against our algorithm and cameras.
+
+**Added:** `validation/datasets_stroke_20261124/` (README, results.json, figures f9-f15, scripts). Now 7 datasets,
+451 healthy people and 50 stroke survivors. Lencioni's walks carry their measured speed, so a speed-matched healthy
+expectation at our 0.55 m/s pace is possible. In the Van Criekinge stroke Excel release the leg labelled paretic bends
+more in 40 of 50 people (labels possibly swapped), so stroke results use each person's lower-peak leg as the
+more-affected leg; label-based numbers are reported too.
+
+**Result:** the v3.7.1 picture holds: iPad 6.3-7.1 deg from the new healthy groups (62nd-87th percentile of healthy
+people), Pi 8.6-9.7 deg (80th-100th). At our pace a healthy swing peak is 56 +- 10 deg; ours 53 (iPad, Pi right) and 47
+(Pi left, bottom edge). Stroke: our normal mean curves resemble the stroke group's average curve (2.3-3.6 deg), so a
+group-average comparison cannot judge a person; per person, 70% of stroke-affected knees are below the healthy limit
+and so are all our stiff-knee passes, while 67-81% of our normal passes stay above it. Swing peak separates stroke
+from healthy with AUC 0.84, about 0.80 with our Pi error added; leg-to-leg difference AUC 0.86, but our 3.5 deg Pi
+left-right bias must be calibrated first. Next: record healthy people on the walker for walker-matched limits.
+
+---
+
 ## v3.7.1 - 2026-11-24 - deep comparison with 5 published healthy-gait datasets; validation presentation
 
 **Why:** the user asked how far the walker's knee curves are from published healthy data, whether that is within the
