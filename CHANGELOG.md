@@ -5,6 +5,25 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.5.0 - 2026-11-24 - per-session knee CSV in Qatar time; right-leg visibility problem found
+
+**Changed:** every side session (`07_side_session.py`, also from the "Start side recording" icon) now also writes
+`~/gait_data/knee_angles/knee_angles_YYYY-MM-DD_HH-MM-SS.csv` (session start, Qatar time) with columns
+`actual_time_qatar, session_time_s, left_knee_deg, right_knee_deg` (frame wall-clock time in Qatar time, UTC+3;
+seconds from the first frame; the angles shown on screen). New `gait3d/knee_log.py`; `--knee-dir ""` turns it off.
+The existing `runs/side_session_*/` files are unchanged.
+
+**Issue found (user observation, confirmed on the test walk):** during the symmetric deep knee bends at the start of
+the test walk, the model showed L 57-64 deg and R 15-32 deg while the iPad reference showed about 90-110 deg for
+both. Two causes: (1) the model was trained on walking only (swing peaks up to ~70 deg) and cannot output much more;
+(2) the right knee is barely seen: during walking passes the raw cam1 right-leg angle correlates with the right-leg
+reference at r -0.17..0.29 in walks 2, 3 and the test (0.69 in walk 1), while cam1 follows the left leg well
+(0.47-0.74) and cam0's right-leg angle gives only 0.50-0.65. Right-leg predictions are therefore partly inferred
+from the gait rhythm and would be wrong for asymmetric gait. Right-leg results must not be trusted until cam1 sees
+the right knee again.
+
+---
+
 ## v3.4.1 - 2026-11-24 - held-out test walk; clock sync guards against false knee-bend matches
 
 **Test:** one more walk recorded today with the live model (MoveNet-trained, cameras untouched), never used for

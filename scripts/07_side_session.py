@@ -34,6 +34,8 @@ ap.add_argument('--seconds', type=float, default=3600)
 ap.add_argument('--web-port', type=int, default=8080)
 ap.add_argument('--headless', action='store_true')
 ap.add_argument('--no-video', action='store_true')
+ap.add_argument('--knee-dir', default='~/gait_data/knee_angles',
+                help='v3.5.0: per-session CSV (Qatar time, session time, left/right knee); "" = off')
 ap.add_argument('--model', default='config/angle_model.pkl',
                 help='v3.3.1 learned angle model from train_angle_model.py; shown when present, "" = off')
 a = ap.parse_args()
@@ -66,6 +68,11 @@ fcsv = open(live.csv_path, 'w', newline='')
 w = csv.writer(fcsv)
 w.writerow(['t', 'L_flexion', 'R_flexion', 'L_raw', 'R_raw', 'L_status', 'R_status', 'L_model', 'R_model'])
 fkp = open(os.path.join(a.out, 'keypoints.jsonl'), 'w')
+klog = None
+if a.knee_dir:
+    from gait3d.knee_log import KneeLog
+    klog = KneeLog(os.path.expanduser(a.knee_dir))
+    print('[side] knee CSV:', klog.path, flush=True)
 vid = None
 STOP = []
 signal.signal(signal.SIGTERM, lambda *_: STOP.append(1))
@@ -95,6 +102,8 @@ try:
                        + [('' if out[s].raw is None else f'{out[s].raw:.1f}') for s in 'LR'] + [out[s].status for s in 'LR']
                        + [('' if ml[s] is None else f'{ml[s]:.1f}') for s in 'LR'])
             shown = ml if model else {s: out[s].flexion for s in 'LR'}
+            if klog is not None:
+                klog.write(t, shown['L'], shown['R'])
             vis = raw.copy()
             for s in 'LR':
                 o, cam = out[s], src_map[s]
@@ -122,6 +131,8 @@ try:
 finally:
     fcsv.close()
     fkp.close()
+    if klog is not None:
+        klog.close()
     if vid is not None:
         vid.release()
     hp.close()
