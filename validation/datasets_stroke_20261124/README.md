@@ -50,6 +50,10 @@ vs Van Criekinge -4.3 / -10.3 / -4.7; stance +5.4 / +8.3 / +8.4 and +4.6 / +7.5 
   stroke median 13.7, 64% above 7.2; AUC 0.86. Our Pi left-right bias relative to the iPad is 3.5 deg and has to be
   calibrated out before this marker is used.
 
+**Where the gap is (v3.7.3, ours minus healthy mean):** early stance +4.7 to +8.7 deg (iPad), +8.8 to +14.1 (Pi);
+around the swing peak -9.5 to -12.4 (iPad), -12.1 to -18.5 (Pi), against Moreira 0.56, Lencioni below 0.8 m/s and
+Van Criekinge. Range of motion 4-19 deg smaller than healthy across the four equivalence references.
+
 ## Limits
 
 Plausibility against other people, not accuracy on the same person. Published data are walking without a walker;
@@ -61,5 +65,7 @@ healthy person; stiff-knee passes are few (8 iPad, 3 per Pi knee). Van Criekinge
 - `scripts/extract.py`: reads the Van Criekinge Excel files and Lencioni MAT files (python3 -I, paths as arguments).
 - `scripts/analyse_ext.py`: all numbers in `results.json` and figures f9-f15 (needs `datasets_deep_20261124` outputs).
 - `figures/`: f9 new references, f10 RMSE heatmap (27 conditions), f11 tolerance (7 datasets), f12 speed trend,
-  f13 stroke curves, f14 per-person stroke map, f15 detection with our error and leg-to-leg difference.
+  f13 stroke curves, f14 per-person stroke map, f15 detection with our error and leg-to-leg difference;
+  v3.7.3: f16 one panel per dataset, f17 features vs speed (Moreira, Fukuchi, Lencioni), f18 equivalence against
+  four references, f19 difference curve against three references (`gap_by_ref`, `EQ4` in results.json).
 - `analyse_ext.log`: console output.

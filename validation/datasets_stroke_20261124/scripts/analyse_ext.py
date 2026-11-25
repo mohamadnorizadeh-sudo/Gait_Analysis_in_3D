@@ -457,3 +457,109 @@ for s in SER:
     print(s, {k: (round(A[s][k]['rmse'], 1), round(A[s][k]['r'], 3), round(A[s][k]['band'])) for k in NEW + ['VC stroke more', 'VC stroke less']})
 for k, e in EQ.items():
     print(k, {a: round(b, 1) for a, b in e.items()})
+
+
+# ====================== v3.7.2b: the remaining slides redone with all 7 datasets ======================
+rng2 = np.random.default_rng(11)
+DEEP = json.load(open(f'{D}/results.json'))
+EQ4 = {}
+for k in ('Fukuchi T01 All', 'Moreira 0.56'):
+    for s in SER:
+        for f in ('peak', 'stance', 'rom'):
+            EQ4[(k, s, f)] = DEEP['EQ'][f'{k}|{s}|{f}']
+for k in ('Lencioni <0.8', 'VC able'):
+    for s in SER:
+        for f in ('peak', 'stance', 'rom'):
+            EQ4[(k, s, f)] = EQ[f'{k}|{s}|{f}']
+SHORT = {'Fukuchi T01 All': 'Fukuchi 2018\n0.49 m/s (42)', 'Moreira 0.56': 'Moreira 2021\n0.56 m/s (16)',
+         'Lencioni <0.8': f"Lencioni 2019\n<0.8 m/s ({REF['Lencioni <0.8']['n']})", 'VC able': 'Van Criekinge 2023\npreferred (138)'}
+
+# F16: one panel per dataset (plus older adults)
+SM8 = ['Moreira 0.56', 'Fukuchi T01 All', 'Fukuchi T01 Older', 'Helwig unbraced', 'Schwartz verySlow', 'Pinzone centreOne', 'VC able', 'Lencioni <0.8']
+T8 = {'Moreira 0.56': 'Moreira 2021 · 0.56 m/s', 'Fukuchi T01 All': 'Fukuchi 2018 · 0.49 m/s', 'Fukuchi T01 Older': 'Fukuchi 2018 · 0.49 m/s, older',
+      'Helwig unbraced': 'Helwig 2016 · treadmill', 'Schwartz verySlow': 'Schwartz 2008 · very slow', 'Pinzone centreOne': 'Pinzone 2014 · lab 1',
+      'VC able': 'Van Criekinge 2023 · preferred', 'Lencioni <0.8': 'Lencioni 2019 · below 0.8 m/s'}
+fig, axs = plt.subplots(2, 4, figsize=(16, 7), sharex=True, sharey=True)
+for ax, k in zip(axs.flat, SM8):
+    m, sd = REF[k]['m'], REF[k]['sd']
+    ax.fill_between(x, m - 2 * sd, m + 2 * sd, color=LIGHT, lw=0, label='healthy ±2 SD')
+    ax.plot(x, m, color=GREY, lw=1.6, ls='--', label='healthy mean')
+    for s, (lab, col) in SER.items():
+        ax.plot(x, OM[s], color=col, lw=2, label=lab)
+    ax.set_title(T8[k], fontsize=11.5, loc='left')
+    ax.text(0.98, 0.96, ' / '.join(f"{A[s][k]['rmse']:.1f}" for s in SER) + '°', transform=ax.transAxes, ha='right', va='top', fontsize=10, color='#3c4043')
+    ax.set_ylim(-12, 80)
+for ax in axs[1]: ax.set_xlabel('% gait cycle (0 = swing peak)')
+for ax in axs[:, 0]: ax.set_ylabel('knee flexion (°)')
+h, l = axs[0, 0].get_legend_handles_labels()
+fig.legend(h, l, loc='lower center', ncol=5, bbox_to_anchor=(0.5, -0.04))
+fig.suptitle('Same shape as healthy walking in all seven datasets; numbers are RMSE for iPad / Pi left / Pi right', x=0.01, y=1.0, ha='left', fontsize=15, fontweight='bold')
+fig.tight_layout(rect=(0, 0.04, 1, 0.95)); save(fig, 'f16_curves_all_datasets')
+
+# F17: swing peak and stance minimum vs speed, Moreira + Fukuchi + Lencioni speed groups
+fig, axs = plt.subplots(1, 2, figsize=(13.5, 5.2))
+for ax, f, ttl in ((axs[0], 'peak', 'Swing-phase peak flexion'), (axs[1], 'stance', 'Mid-stance minimum flexion')):
+    groups_ = [('Moreira', 'o', 'Moreira 2021 (overground, young)', [k for k in REF if k.startswith('Moreira')]),
+               ('Fukuchi', 's', 'Fukuchi 2018 (treadmill, all ages)', [k for k in REF if k.startswith('Fukuchi T0') and k.endswith(' All')]),
+               ('Lencioni', '^', 'Lencioni 2019 (overground, adults)', [b[2] for b in BINS])]
+    for name, mk, lab, ks in groups_:
+        ks = sorted(ks, key=lambda k: REF[k]['speed'])
+        sp = [REF[k]['speed'] for k in ks]; hf = [feat(REF[k]['S'])[f] for k in ks]
+        ax.errorbar(sp, [h_.mean() for h_ in hf], yerr=[h_.std(ddof=1) for h_ in hf], fmt=mk + '-', color=GREY if name != 'Lencioni' else DARK,
+                    mfc='white', capsize=3, lw=1.2, label=lab)
+    for j, s in enumerate(SER):
+        v = feat(ON[s][0])[f]
+        ax.errorbar(our_speed + (j - 1) * 0.025, v.mean(), yerr=v.std(ddof=1), fmt='D', color=SER[s][1], ms=8, capsize=3, label=SER[s][0])
+    ax.axvspan(our_speed - 0.08, our_speed + 0.08, color='#fdf0e8', zorder=0)
+    ax.set_xlabel('walking speed (m/s)'); ax.set_ylabel('knee flexion (°)'); ax.set_title(ttl, loc='left')
+axs[0].legend(fontsize=9, loc='lower right')
+axs[1].text(our_speed + 0.1, 15, f'shaded: our pace ≈ {our_speed:.2f} m/s', ha='left', va='center', fontsize=9, color='#a04a1c')
+fig.suptitle('Three datasets with measured speeds: our swing peak sits at the low end of healthy, our stance 5–8° more bent',
+             x=0.01, y=1.0, ha='left', fontsize=15, fontweight='bold')
+fig.tight_layout(rect=(0, 0, 1, 0.95)); save(fig, 'f17_features_vs_speed_all')
+
+# F18: equivalence against four references, one panel per feature
+fig, axs = plt.subplots(1, 3, figsize=(15, 5.4), sharey=True)
+refs4 = ['Fukuchi T01 All', 'Moreira 0.56', 'Lencioni <0.8', 'VC able']
+for ax, (f, fl) in zip(axs, (('peak', 'Swing peak'), ('stance', 'Stance minimum'), ('rom', 'Range of motion'))):
+    ax.axvspan(-5, 5, color='#e8f3ec', zorder=0)
+    for i, k in enumerate(refs4):
+        for j, s in enumerate(SER):
+            e = EQ4[(k, s, f)]; yy = len(refs4) - 1 - i + (1 - j) * 0.22
+            ax.plot([e['lo'], e['hi']], [yy, yy], color=SER[s][1], lw=2.2)
+            ax.plot(e['diff'], yy, 'o', color=SER[s][1], ms=7, mec='white', label=SER[s][0] if (i == 0 and f == 'peak') else None)
+    ax.axvline(0, color=GREY, lw=1); ax.set_title(fl, loc='left'); ax.set_xlabel('ours − healthy (°), 90% CI')
+    ax.set_xlim(-27, 16)
+axs[0].set_yticks(range(len(refs4))[::-1]); axs[0].set_yticklabels([SHORT[k] for k in refs4], fontsize=9.5)
+axs[0].plot([], [], 's', color='#e8f3ec', ms=12, label='±5° (accuracy goal)')
+fig.legend(*axs[0].get_legend_handles_labels(), loc='lower center', ncol=4, bbox_to_anchor=(0.5, -0.07))
+fig.suptitle('Swing peak within ±5° for iPad and Pi right against most references; stance and range are not',
+             x=0.01, y=1.0, ha='left', fontsize=15, fontweight='bold')
+fig.tight_layout(rect=(0, 0.04, 1, 0.95)); save(fig, 'f18_equivalence_4refs')
+
+# F19: where the gap is, against three references
+fig, axs = plt.subplots(1, 3, figsize=(15, 4.8), sharey=True)
+GAPR = {}
+for ax, k in zip(axs, ('Moreira 0.56', 'Lencioni <0.8', 'VC able')):
+    sd = REF[k]['sd']
+    ax.fill_between(x, -2 * sd, 2 * sd, color=LIGHT, lw=0, label='healthy ±2 SD')
+    ax.fill_between(x, -sd, sd, color='#c8cbcf', lw=0, label='±1 SD')
+    ax.axhspan(-5, 5, color='#e8f3ec', alpha=0.6, zorder=0, label='±5°')
+    for s in SER:
+        dcur = OM[s] - REF[k]['m']; ax.plot(x, dcur, color=SER[s][1], lw=2, label=SER[s][0])
+        GAPR[f'{k}|{s}'] = dict(early_stance_max=float(dcur[15:40].max()), around_peak_min=float(np.r_[dcur[:8], dcur[93:]].min()),
+                                midstance_inside_2sd=float(np.mean(np.abs(dcur[40:70]) <= 2 * sd[40:70]) * 100))
+    ax.axhline(0, color=GREY, lw=1)
+    for xa, txt in ((12, 'swing → heel strike'), (50, 'stance'), (88, 'push-off → swing')):
+        ax.text(xa, -24, txt, ha='center', fontsize=8.5, color='#5f6368')
+    ax.set_ylim(-26, 26); ax.set_xlabel('% gait cycle (0 = swing peak)'); ax.set_title(SHORT[k].replace('\n', ' · '), loc='left', fontsize=11.5)
+axs[0].set_ylabel('ours − healthy (°)')
+h, l = axs[0].get_legend_handles_labels()
+fig.legend(h, l, loc='lower center', ncol=6, bbox_to_anchor=(0.5, -0.07))
+fig.suptitle('The gap sits in early stance and around the swing peak, against every reference', x=0.01, y=1.0, ha='left', fontsize=15, fontweight='bold')
+fig.tight_layout(rect=(0, 0.04, 1, 0.95)); save(fig, 'f19_difference_curve_3refs')
+R2 = json.load(open(f'{N}/results_ext.json'))
+R2['gap_by_ref'] = GAPR
+R2['EQ4'] = {'|'.join(k): v for k, v in EQ4.items()}
+json.dump(R2, open(f'{N}/results_ext.json', 'w'), indent=1, default=float)
+print(json.dumps(GAPR, indent=0))

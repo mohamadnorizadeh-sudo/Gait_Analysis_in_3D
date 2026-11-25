@@ -346,3 +346,50 @@ VC able|piL|rom {'diff': -17.8, 'lo': -22.1, 'hi': -13.5, 'ours': 38.3, 'healthy
 VC able|piR|peak {'diff': -4.7, 'lo': -10.3, 'hi': 1.2, 'ours': 53.0, 'healthy': 57.7, 'sd': 5.4}
 VC able|piR|stance {'diff': 7.6, 'lo': 2.4, 'hi': 12.0, 'ours': 9.2, 'healthy': 1.6, 'sd': 5.2}
 VC able|piR|rom {'diff': -12.3, 'lo': -19.7, 'hi': -3.4, 'ours': 43.8, 'healthy': 56.1, 'sd': 5.4}
+{
+"Moreira 0.56|ipad": {
+"early_stance_max": 7.913196762460879,
+"around_peak_min": -10.129074743318021,
+"midstance_inside_2sd": 100.0
+},
+"Moreira 0.56|piL": {
+"early_stance_max": 12.707526732760972,
+"around_peak_min": -18.479900295255682,
+"midstance_inside_2sd": 100.0
+},
+"Moreira 0.56|piR": {
+"early_stance_max": 11.67760944179036,
+"around_peak_min": -13.488242915402658,
+"midstance_inside_2sd": 100.0
+},
+"Lencioni <0.8|ipad": {
+"early_stance_max": 8.70429050305054,
+"around_peak_min": -9.46244834322281,
+"midstance_inside_2sd": 100.0
+},
+"Lencioni <0.8|piL": {
+"early_stance_max": 14.098186287603015,
+"around_peak_min": -17.02669015764807,
+"midstance_inside_2sd": 100.0
+},
+"Lencioni <0.8|piR": {
+"early_stance_max": 13.081122862203388,
+"around_peak_min": -12.149550197000146,
+"midstance_inside_2sd": 80.0
+},
+"VC able|ipad": {
+"early_stance_max": 4.693263609132116,
+"around_peak_min": -12.356765969805124,
+"midstance_inside_2sd": 100.0
+},
+"VC able|piL": {
+"early_stance_max": 9.777799507369306,
+"around_peak_min": -18.152440499205547,
+"midstance_inside_2sd": 96.66666666666667
+},
+"VC able|piR": {
+"early_stance_max": 8.778384179169436,
+"around_peak_min": -14.419228339180655,
+"midstance_inside_2sd": 66.66666666666666
+}
+}

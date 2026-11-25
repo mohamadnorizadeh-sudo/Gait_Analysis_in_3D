@@ -5,6 +5,19 @@ notebook `calibrate_capture.ipynb` is kept unchanged as the v1 reference.
 
 ---
 
+## v3.7.3 - 2026-11-25 - remaining validation charts redone with all 7 datasets
+
+**Why:** the user asked whether every slide of the validation deck used the new datasets. Four charts still used only
+the first five datasets (curve panels, features vs speed, equivalence, difference curve).
+
+**Added:** figures f16-f19 in `validation/datasets_stroke_20261124/` and the code for them at the end of
+`scripts/analyse_ext.py` (earlier numbers unchanged: separate random generator). Findings unchanged: same shape in all
+seven datasets; swing peak within +-5 deg of healthy for the iPad and Pi right against 3 of 4 references, Pi left 5.5-11.2
+deg low; stance 4.6-8.4 deg more bent; range of motion 4-19 deg smaller. Deck: printed notes and the "Next" suggestion
+column removed from the slides at the user's request.
+
+---
+
 ## v3.7.2 - 2026-11-24 - Van Criekinge 2023 (healthy + 50 stroke survivors) and Lencioni 2019 added
 
 **Why:** the user approved adding these two datasets and asked for the analysis against our algorithm and cameras.
